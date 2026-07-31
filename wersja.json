@@ -1,7 +1,7 @@
 {
-  "wersja": "6.1",
-  "opis": "Co nowego w 6.1:\n\n• kolejka pojazdów — trzy auta pod bramą obsłużone po kolei\n• kody jednorazowe dla gości\n• harmonogram ogólny zapory jako siatka tygodniowa\n• obsługa wielu obiektów: zapora i dwa szlabany\n• poprawka: panele zasłaniały słupki na wąskim ekranie",
+  "wersja": "6.2.3",
+  "opis": "Co nowego w 6.2.3:\n\n• godlo bez zielonego kwadratu, tlo wbudowane",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "",
+  "suma": "1cde17bd6b2dbc7f377088b1f0a71b75cfa48aabcde4d4764cca36e0b35bc20a",
   "wymagana": false
 }
