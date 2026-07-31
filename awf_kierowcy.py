@@ -731,281 +731,119 @@ def okno_tresci(rodzic, tytul, wiersze, szerokosc=520):
     return w
 
 
-class EkranPin(tk.Canvas):
-    """Ekran logowania rysowany na plotnie.
+class EkranPin(tk.Frame):
+    """Ekran logowania: zdjecie w tle i klawiatura ze zwyklych przyciskow.
 
-    Calosc jest skladana w bibliotece graficznej i wyswietlana jako jeden
-    obraz — dzieki temu mozna dac zaokraglenia, cienie i przejscia
-    tonalne, ktorych zwykle kontrolki nie potrafia.
+    Swiadomie bez skladania calego ekranu w obraz — zwykle przyciski
+    dzialaja wszedzie, a zdjecie jest tylko tlem pod nimi.
     """
 
     KLAWISZE = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"]
 
     def __init__(self, rodzic, sprawdz, po_zalogowaniu):
-        super().__init__(rodzic, highlightthickness=0, bd=0, bg=B["tlo"])
+        super().__init__(rodzic, bg=B["tlo"])
         self.sprawdz = sprawdz
         self.po_zalogowaniu = po_zalogowaniu
         self.wpisany = ""
         self.proby = 0
-        self.info = ""
-        self.zablokowany = False
-        self.pola = []           # obszary klikalne
-        self.pod_kursorem = None
-        self._tk = None
+        self._tlo_tk = None
         self._rozmiar = None
-        self.bind("<Button-1>", self._klik)
-        self.bind("<Motion>", self._ruch_myszy)
-        self.bind("<Configure>", lambda _e: self.rysuj())
+
+        self.tlo = tk.Label(self, bd=0, bg=B["tlo"])
+        self.tlo.place(x=0, y=0, relwidth=1, relheight=1)
+        self.bind("<Configure>", self._na_zmiane)
+
+        self.karta = tk.Frame(self, bg=B["tlo2"], highlightthickness=1,
+                              highlightbackground=B["zloto2"])
+        self.karta.place(relx=0.5, rely=0.5, anchor="center")
+        self._buduj_karte()
         self.bind_all("<Key>", self._klawisz)
-        self.after(60, self.rysuj)
 
-    # ---------------- sklad obrazu ----------------
+    # ---------------- tlo ----------------
 
-    def _tlo(self, W, H):
-        """Zdjecie alei kampusu, przyciete pod rozmiar okna."""
+    def _na_zmiane(self, _e=None):
+        W, H = self.winfo_width(), self.winfo_height()
+        if W < 50 or H < 50 or (W, H) == self._rozmiar:
+            return
+        self._rozmiar = (W, H)
         plik = zasob("logowanie-tlo.jpg")
-        if plik:
-            try:
-                obraz = Image.open(plik).convert("RGB")
-                sk = max(W / obraz.width, H / obraz.height)
-                nowy = obraz.resize((max(1, int(obraz.width * sk)),
-                                     max(1, int(obraz.height * sk))),
-                                    Image.LANCZOS)
-                lewy = (nowy.width - W) // 2
-                gorny = int((nowy.height - H) * 0.45)
-                return nowy.crop((lewy, gorny, lewy + W, gorny + H))
-            except (OSError, ValueError):
-                pass
-        return Image.new("RGB", (W, H), B["tlo"])
-
-    @staticmethod
-    def _klawisz_obraz(szer, wys, kolor, jasniej=False):
-        """Klawisz z delikatnym przejsciem tonalnym i cieniem pod spodem."""
-        m = 10
-        plotno = Image.new("RGBA", (szer + m * 2, wys + m * 2), (0, 0, 0, 0))
-
-        cien = Image.new("L", plotno.size, 0)
-        ImageDraw.Draw(cien).rounded_rectangle(
-            [m + 2, m + 5, m + szer - 2, m + wys + 3], radius=14, fill=110)
-        cien = cien.filter(ImageFilter.GaussianBlur(7))
-        warstwa = Image.new("RGBA", plotno.size, (0, 0, 0, 0))
-        warstwa.putalpha(cien)
-        plotno = Image.alpha_composite(plotno, warstwa)
-
-        r, g, b = (int(kolor[i:i + 2], 16) for i in (1, 3, 5))
-        wsp = 1.22 if jasniej else 1.0
-        gora = tuple(min(255, int(k * 1.16 * wsp)) for k in (r, g, b))
-        dol = tuple(min(255, int(k * 0.86 * wsp)) for k in (r, g, b))
-        grad = Image.new("RGB", (1, wys))
-        for y in range(wys):
-            t = y / max(1, wys - 1)
-            grad.putpixel((0, y), tuple(
-                int(gora[i] + (dol[i] - gora[i]) * t) for i in range(3)))
-        grad = grad.resize((szer, wys), Image.BILINEAR)
-
-        maska = Image.new("L", (szer, wys), 0)
-        ImageDraw.Draw(maska).rounded_rectangle(
-            [0, 0, szer - 1, wys - 1], radius=13, fill=255)
-        klawisz = Image.new("RGBA", (szer, wys), (0, 0, 0, 0))
-        klawisz.paste(grad, (0, 0), maska)
-
-        d = ImageDraw.Draw(klawisz)
-        d.rounded_rectangle([0, 0, szer - 1, wys - 1], radius=13,
-                            outline=(255, 255, 255, 46), width=1)
-        d.line([(13, 1), (szer - 14, 1)], fill=(255, 255, 255, 70), width=1)
-
-        plotno.paste(klawisz, (m, m), klawisz)
-        return plotno
-
-    def rysuj(self):
-        try:
-            self.delete("all")
-        except tk.TclError:
+        if not plik:
+            self.tlo.configure(image="", bg=B["tlo"])
             return
         try:
-            self._rysuj_pelny()
-        except Exception as blad:
-            # Skladanie obrazu wymaga biblioteki graficznej i pliku tla.
-            # Gdyby czegos zabraklo, logowanie musi dzialac mimo to.
-            print("ekran logowania — wariant zapasowy:", blad)
-            self._rysuj_prosty()
+            obraz = Image.open(plik).convert("RGB")
+            sk = max(W / obraz.width, H / obraz.height)
+            nowy = obraz.resize((max(1, int(obraz.width * sk)),
+                                 max(1, int(obraz.height * sk))),
+                                Image.LANCZOS)
+            lewy = (nowy.width - W) // 2
+            gorny = int((nowy.height - H) * 0.45)
+            kadr = nowy.crop((lewy, gorny, lewy + W, gorny + H))
+            naklad = Image.new("RGBA", (W, H), (4, 14, 9, 96))
+            kadr = Image.alpha_composite(kadr.convert("RGBA"), naklad)
+            self._tlo_tk = ImageTk.PhotoImage(kadr.convert("RGB"))
+            self.tlo.configure(image=self._tlo_tk)
+        except (OSError, ValueError, MemoryError):
+            # brak zdjecia nie moze przeszkodzic w zalogowaniu
+            self.tlo.configure(image="", bg=B["tlo"])
 
-    def _rysuj_prosty(self):
-        """Klawiatura bez skladanego obrazu — na wypadek, gdyby tamten
-        wariant nie zadzialal na jakims komputerze."""
-        self.delete("all")
-        W = max(self.winfo_width(), 700)
-        H = max(self.winfo_height(), 480)
-        self.configure(bg=B["tlo"])
-        self.create_text(W // 2, H // 2 - 210, text=NAZWA, fill=B["tekst"],
-                         font=("Segoe UI Semibold", 17))
-        self.create_text(W // 2, H // 2 - 185, text=PODTYTUL,
-                         fill=B["przygasz"], font=("Segoe UI", 10))
-        ile = len(self.wpisany)
-        for i in range(max(4, ile)):
-            x = W // 2 - (max(4, ile) - 1) * 11 + i * 22
-            self.create_oval(x - 7, H // 2 - 158, x + 7, H // 2 - 144,
-                             fill=B["akcent"] if i < ile else "",
-                             outline=B["akcent"] if i < ile else B["przygasz"],
-                             width=2)
-        self.create_text(W // 2, H // 2 - 122, text=self.info, fill=B["alarm"],
-                         font=("Segoe UI", 9))
-        self.pola = []
-        szer, wys, odstep = 120, 66, 10
-        x0 = W // 2 - (szer * 3 + odstep * 2) // 2
-        y0 = H // 2 - 100
-        for i, znak in enumerate(self.KLAWISZE):
-            x = x0 + (i % 3) * (szer + odstep)
-            y = y0 + (i // 3) * (wys + odstep)
-            barwa = B["akcent"] if znak == "OK" else B["tlo3"]
-            self.create_rectangle(x, y, x + szer, y + wys, fill=barwa,
-                                  outline=B["linia"])
-            self.create_text(x + szer // 2, y + wys // 2, text=znak,
-                             fill=B["naAkcencie"] if znak == "OK" else (
-                                 B["alarm"] if znak == "C" else B["tekst"]),
-                             font=("Segoe UI Semibold", 22))
-            self.pola.append((x, y, x + szer, y + wys, znak, i))
-        y = y0 + 4 * (wys + odstep) + 14
-        self.create_text(W // 2, y, text="PIN fabryczny 1234",
-                         fill=B["przygasz"], font=("Segoe UI", 8))
-        self.create_text(W // 2, y + 22, text="Nie pamiętam PIN-u",
-                         fill=B["zloto"], font=("Segoe UI", 9, "underline"))
-        self.pola.append((W // 2 - 80, y + 12, W // 2 + 80, y + 32,
-                          "ZAPOMNIALEM", -1))
+    # ---------------- karta ----------------
 
-    def _rysuj_pelny(self):
-        W = max(self.winfo_width(), 700)
-        H = max(self.winfo_height(), 480)
+    def _buduj_karte(self):
+        w = tk.Frame(self.karta, bg=B["tlo2"], padx=38, pady=30)
+        w.pack()
 
-        obraz = self._tlo(W, H)
-
-        # przyciemnienie i lagodne rozjasnienie srodka
-        naklad = Image.new("RGBA", (W, H), (4, 14, 9, 74))
-        obraz = Image.alpha_composite(obraz.convert("RGBA"), naklad)
-
-        # karta logowania
-        kw = min(500, int(W * 0.46))
-        kh = min(740, int(H * 0.94))
-        kx, ky = (W - kw) // 2, (H - kh) // 2
-
-        cien = Image.new("L", (W, H), 0)
-        ImageDraw.Draw(cien).rounded_rectangle(
-            [kx + 6, ky + 12, kx + kw + 6, ky + kh + 10], radius=22, fill=150)
-        cien = cien.filter(ImageFilter.GaussianBlur(24))
-        warstwa = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        warstwa.putalpha(cien)
-        obraz = Image.alpha_composite(obraz, warstwa)
-
-        karta = Image.new("RGBA", (kw, kh), (0, 0, 0, 0))
-        d = ImageDraw.Draw(karta)
-        tlo_karty = (11, 30, 21, 246) if B["welon"] == 0 else (255, 255, 255, 246)
-        d.rounded_rectangle([0, 0, kw - 1, kh - 1], radius=20, fill=tlo_karty,
-                            outline=(201, 168, 110, 90), width=1)
-        obraz.paste(karta, (kx, ky), karta)
-
-        self.pola = []
-        self._klawisze_obrazy = []
-        gotowe = obraz.convert("RGB")
-        self._tk = ImageTk.PhotoImage(gotowe)
-        self.create_image(0, 0, image=self._tk, anchor="nw")
-
-        # ---- godlo ----
-        y = ky + 30
         plik = zasob("godlo-awf.png")
         if plik:
             try:
-                g = Image.open(plik).convert("RGBA").resize((78, 78),
-                                                            Image.LANCZOS)
-                self._godlo = ImageTk.PhotoImage(g)
-                self.create_image(W // 2, y + 39, image=self._godlo)
-                y += 96
+                obraz = Image.open(plik).convert("RGBA").resize((78, 78),
+                                                                Image.LANCZOS)
+                self._godlo = ImageTk.PhotoImage(obraz)
+                tk.Label(w, image=self._godlo, bg=B["tlo2"]).pack()
             except (OSError, ValueError):
-                y += 10
+                pass
 
-        self.create_text(W // 2, y + 6, text=self.master.d.get("nazwa", NAZWA)
-                         if hasattr(self.master, "d") else NAZWA,
-                         fill=B["tekst"], font=("Segoe UI Semibold", 17))
-        self.create_text(W // 2, y + 32, text="Kontrola wjazdu i wyjazdu",
-                         fill=B["przygasz"], font=("Segoe UI", 10))
-        y += 62
+        tk.Label(w, text=NAZWA, bg=B["tlo2"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 16)).pack(pady=(12, 0))
+        tk.Label(w, text=PODTYTUL, bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 10)).pack()
 
-        # ---- kropki wpisanego PIN-u ----
-        ile = len(self.wpisany)
-        for i in range(max(4, ile)):
-            x = W // 2 - (max(4, ile) - 1) * 11 + i * 22
-            pelna = i < ile
-            self.create_oval(x - 7, y - 7, x + 7, y + 7,
-                             fill=B["akcent"] if pelna else "",
-                             outline=B["akcent"] if pelna else B["przygasz"],
-                             width=2)
-        y += 26
+        self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcent"],
+                               font=("Segoe UI", 22))
+        self.kropki.pack(pady=(16, 0))
+        self.info = tk.Label(w, text="", bg=B["tlo2"], fg=B["alarm"],
+                             font=("Segoe UI", 9))
+        self.info.pack()
 
-        self.create_text(W // 2, y + 8, text=self.info, fill=B["alarm"],
-                         font=("Segoe UI", 9))
-        y += 26
-
-        # ---- klawiatura ----
-        odstep = 12
-        szer = (kw - 60 - odstep * 2) // 3
-        wys = max(56, min(78, (ky + kh - 82 - y) // 4 - odstep))
-        x0 = kx + 30
-
+        siatka = tk.Frame(w, bg=B["tlo2"])
+        siatka.pack(pady=(12, 0))
+        self.przyciski = []
         for i, znak in enumerate(self.KLAWISZE):
-            kol, wier = i % 3, i // 3
-            x = x0 + kol * (szer + odstep)
-            yy = y + wier * (wys + odstep)
-            if znak == "OK":
-                barwa = B["akcent"]
-            elif znak == "C":
-                barwa = B["tlo3"]
-            else:
-                barwa = B["tlo3"]
-            podswietl = (self.pod_kursorem == i)
-            kl = self._klawisz_obraz(szer, wys, barwa, podswietl)
-            tkobr = ImageTk.PhotoImage(kl)
-            self._klawisze_obrazy.append(tkobr)
-            self.create_image(x - 10, yy - 10, image=tkobr, anchor="nw")
-            self.create_text(x + szer // 2, yy + wys // 2, text=znak,
-                             fill=B["naAkcencie"] if znak == "OK" else (
-                                 B["alarm"] if znak == "C" else B["tekst"]),
-                             font=("Segoe UI Semibold", 26 if znak != "OK" else 18))
-            self.pola.append((x, yy, x + szer, yy + wys, znak, i))
+            glowny = znak == "OK"
+            b = tk.Button(
+                siatka, text=znak, width=4, relief="flat", bd=0,
+                cursor="hand2", font=("Segoe UI Semibold", 22 if not glowny else 15),
+                pady=14, activeforeground=B["tekst"],
+                bg=B["akcent"] if glowny else B["tlo3"],
+                fg=B["naAkcencie"] if glowny else (
+                    B["alarm"] if znak == "C" else B["tekst"]),
+                activebackground=B["zloto"] if glowny else B["linia"],
+                command=lambda z=znak: self.klik(z))
+            b.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
+            self.przyciski.append(b)
 
-        y += 4 * (wys + odstep) + 6
-        self.create_text(W // 2, y + 4,
-                         text="PIN fabryczny 1234 — zmień po pierwszym logowaniu",
-                         fill=B["przygasz"], font=("Segoe UI", 8))
-        self.create_text(W // 2, y + 24, text="Nie pamiętam PIN-u",
-                         fill=B["zloto"], font=("Segoe UI", 9, "underline"),
-                         tags="zapomnialem")
-        self.pola.append((W // 2 - 80, y + 14, W // 2 + 80, y + 34,
-                          "ZAPOMNIALEM", -1))
+        tk.Label(w, text="PIN fabryczny 1234 — zmień po pierwszym logowaniu",
+                 bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 8)).pack(pady=(14, 0))
+        odn = tk.Label(w, text="Nie pamiętam PIN-u", bg=B["tlo2"],
+                       fg=B["zloto"], font=("Segoe UI", 9, "underline"),
+                       cursor="hand2")
+        odn.pack(pady=(4, 0))
+        odn.bind("<Button-1>", lambda _e: self._zapomnialem())
 
     # ---------------- obsluga ----------------
 
-    def _ruch_myszy(self, e):
-        pod = None
-        for x1, y1, x2, y2, znak, nr in self.pola:
-            if x1 <= e.x <= x2 and y1 <= e.y <= y2 and nr >= 0:
-                pod = nr
-                break
-        if pod != self.pod_kursorem:
-            self.pod_kursorem = pod
-            self.configure(cursor="hand2" if pod is not None else "")
-            self.rysuj()
-
-    def _klik(self, e):
-        for x1, y1, x2, y2, znak, _nr in self.pola:
-            if x1 <= e.x <= x2 and y1 <= e.y <= y2:
-                if znak == "ZAPOMNIALEM":
-                    self._zapomnialem()
-                else:
-                    self.klik(znak)
-                return
-
     def klik(self, znak):
-        if self.zablokowany:
-            return
         if znak == "C":
             self.wpisany = ""
         elif znak == "OK":
@@ -1013,8 +851,8 @@ class EkranPin(tk.Canvas):
             return
         elif len(self.wpisany) < 8:
             self.wpisany += znak
-        self.info = ""
-        self.rysuj()
+        self.kropki.configure(text="●  " * len(self.wpisany))
+        self.info.configure(text="")
 
     def _klawisz(self, e):
         if not self.winfo_ismapped():
@@ -1033,12 +871,13 @@ class EkranPin(tk.Canvas):
         else:
             self.proby += 1
             self.wpisany = ""
+            self.kropki.configure(text="")
             if self.proby >= 5:
-                self.zablokowany = True
-                self.info = "Zablokowano — uruchom program ponownie"
+                self.info.configure(text="Zablokowano — uruchom ponownie")
+                for b in self.przyciski:
+                    b.configure(state="disabled")
             else:
-                self.info = f"Błędny PIN — próba {self.proby} z 5"
-            self.rysuj()
+                self.info.configure(text=f"Błędny PIN — próba {self.proby} z 5")
 
     def _zapomnialem(self):
         """Odzyskanie dostepu: haslem administratora albo kodem z poczty."""
@@ -1454,6 +1293,9 @@ class App(tk.Tk):
         self._sprawdz_aktualizacje()
 
     def zablokuj(self):
+        if self.animacja:
+            self.after_cancel(self.animacja)
+            self.animacja = None
         for w in self.winfo_children():
             w.destroy()
         self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
@@ -1792,12 +1634,17 @@ class App(tk.Tk):
     # ---------------- dzialanie ----------------
 
     def log(self, tekst):
+        # Dziennik znika przy zablokowaniu ekranu i przy zmianie motywu.
+        # Wpis do nieistniejacego pola nie moze zatrzymac programu.
         if not hasattr(self, "dziennik"):
             return
-        self.dziennik.configure(state="normal")
-        self.dziennik.insert("1.0", datetime.now().strftime("%H:%M:%S  ")
-                             + tekst + "\n")
-        self.dziennik.configure(state="disabled")
+        try:
+            self.dziennik.configure(state="normal")
+            self.dziennik.insert("1.0", datetime.now().strftime("%H:%M:%S  ")
+                                 + tekst + "\n")
+            self.dziennik.configure(state="disabled")
+        except tk.TclError:
+            pass
 
     def _zmien_obiekt(self, _=None):
         stary = self.d["obiekty"][self.obiekt]["id"]

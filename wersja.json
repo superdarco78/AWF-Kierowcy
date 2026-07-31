@@ -1,7 +1,7 @@
 {
-  "wersja": "6.1.6",
-  "opis": "Co nowego w 6.1.6:\n\n• Poprawka: ekran logowania z wariantem zapasowym",
+  "wersja": "6.1",
+  "opis": "Co nowego w 6.1:\n\n• kolejka pojazdów — trzy auta pod bramą obsłużone po kolei\n• kody jednorazowe dla gości\n• harmonogram ogólny zapory jako siatka tygodniowa\n• obsługa wielu obiektów: zapora i dwa szlabany\n• poprawka: panele zasłaniały słupki na wąskim ekranie",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "962b87cabe26e2c57e3618b54796dc92350aa24ecdd510bc8baf0df04ad90917",
+  "suma": "",
   "wymagana": false
 }
