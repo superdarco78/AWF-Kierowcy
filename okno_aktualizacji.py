@@ -24,14 +24,10 @@ import aktualizacje
 
 def okno_aktualizacji(rodzic, info, kolory=None):
     """Pokazuje okno z opisem aktualizacji i obsluguje pobranie."""
-    # Te same barwy uczelni co w programie glownym: zielen #036744
-    # i zloto #b9975b. Napis na zieleni jest bialy — zielen uczelni jest
-    # za ciemna, zeby czytac na niej ciemny tekst.
     K = kolory or {
-        "tlo": "#011c12", "tlo2": "#01291b", "linia": "#023c27",
-        "tekst": "#ebf3f0", "przygaszony": "#86b6a5",
-        "akcent": "#036744", "akcent2": "#024a31",
-        "zloto": "#b9975b", "naAkcencie": "#ffffff",
+        "tlo": "#0d2419", "tlo2": "#143024", "linia": "#1f4633",
+        "tekst": "#e9f2ec", "przygaszony": "#7d998a",
+        "akcent": "#00a86b", "zloto": "#c9a86e", "naAkcencie": "#04220e",
     }
 
     w = tk.Toplevel(rodzic)
@@ -75,8 +71,7 @@ def okno_aktualizacji(rodzic, info, kolory=None):
             padx=18, pady=9,
             bg=K["akcent"] if glowny else K["tlo2"],
             fg=K["naAkcencie"] if glowny else K["tekst"],
-            activebackground=K.get("akcent2", K["akcent"]) if glowny
-            else K["linia"],
+            activebackground=K["zloto"] if glowny else K["linia"],
             activeforeground=K["naAkcencie"] if glowny else K["tekst"])
 
     def pozniej():
