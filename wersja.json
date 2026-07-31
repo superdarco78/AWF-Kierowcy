@@ -1,7 +1,7 @@
 {
-  "wersja": "6.2.3",
-  "opis": "Co nowego w 6.2.3:\n\n• godlo bez zielonego kwadratu, tlo wbudowane",
+  "wersja": "6.3.0",
+  "opis": "Co nowego w 6.3.0:\n\n• Nowe: foto pod spodem jako tlo [wersja 6.3.1]",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "1cde17bd6b2dbc7f377088b1f0a71b75cfa48aabcde4d4764cca36e0b35bc20a",
+  "suma": "583bb148a4c79a1744625053aafec206d8e5d2b33bd06361e569b3f5f658efdc",
   "wymagana": false
 }
