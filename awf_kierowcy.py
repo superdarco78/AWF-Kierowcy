@@ -601,6 +601,66 @@ class Scena(tk.Canvas):
 # ekran logowania
 # ==========================================================================
 
+def okno_tresci(rodzic, tytul, wiersze, szerokosc=520):
+    """Okno z trescia w barwach programu — zamiast systemowego komunikatu.
+
+    Wiersze to pary: numer kroku i tekst, albo ("tekst", tresc) dla akapitu,
+    ("", "odstep") dla przerwy, ("", "kod:...") dla sciezki do skopiowania.
+    """
+    w = tk.Toplevel(rodzic)
+    w.title(tytul)
+    w.configure(bg=B["tlo2"])
+    w.resizable(False, False)
+    w.transient(rodzic.winfo_toplevel())
+    w.grab_set()
+
+    pasek = tk.Frame(w, bg=B["akcent"], height=4)
+    pasek.pack(fill="x")
+
+    r = tk.Frame(w, bg=B["tlo2"], padx=30, pady=24)
+    r.pack(fill="both", expand=True)
+
+    tk.Label(r, text=tytul, bg=B["tlo2"], fg=B["tekst"],
+             font=("Segoe UI Semibold", 15)).pack(anchor="w", pady=(0, 14))
+
+    for lewa, prawa in wiersze:
+        if prawa == "odstep":
+            tk.Frame(r, bg=B["tlo2"], height=10).pack()
+        elif lewa == "tekst" or prawa == "tekst":
+            tresc = prawa if lewa == "tekst" else lewa
+            tk.Label(r, text=tresc, bg=B["tlo2"], fg=B["tekst2"],
+                     font=("Segoe UI", 10), wraplength=szerokosc - 60,
+                     justify="left").pack(anchor="w", pady=(0, 4))
+        elif str(prawa).startswith("kod:"):
+            ramka = tk.Frame(r, bg=B["tlo3"])
+            ramka.pack(anchor="w", fill="x", pady=(2, 8), padx=(30, 0))
+            tk.Label(ramka, text=prawa[4:], bg=B["tlo3"], fg=B["zloto"],
+                     font=("Consolas", 10), padx=12, pady=8).pack(side="left")
+        else:
+            wiersz = tk.Frame(r, bg=B["tlo2"])
+            wiersz.pack(anchor="w", fill="x", pady=2)
+            tk.Label(wiersz, text=lewa, bg=B["akcent"], fg=B["naAkcencie"],
+                     font=("Segoe UI Semibold", 9), width=3,
+                     pady=2).pack(side="left", padx=(0, 12))
+            tk.Label(wiersz, text=prawa, bg=B["tlo2"], fg=B["tekst"],
+                     font=("Segoe UI", 10), justify="left",
+                     wraplength=szerokosc - 110).pack(side="left")
+
+    tk.Button(r, text="Rozumiem", command=w.destroy, relief="flat", bd=0,
+              cursor="hand2", bg=B["akcent"], fg=B["naAkcencie"],
+              font=("Segoe UI Semibold", 10), padx=22, pady=9
+              ).pack(anchor="e", pady=(18, 0))
+
+    w.bind("<Escape>", lambda _e: w.destroy())
+    w.bind("<Return>", lambda _e: w.destroy())
+    w.update_idletasks()
+    g = rodzic.winfo_toplevel()
+    x = g.winfo_rootx() + (g.winfo_width() - w.winfo_width()) // 2
+    y = g.winfo_rooty() + (g.winfo_height() - w.winfo_height()) // 3
+    w.geometry(f"+{max(0, x)}+{max(0, y)}")
+    return w
+
+
 class EkranPin(tk.Canvas):
     """Ekran logowania rysowany na plotnie.
 
@@ -702,8 +762,8 @@ class EkranPin(tk.Canvas):
         obraz = Image.alpha_composite(obraz.convert("RGBA"), naklad)
 
         # karta logowania
-        kw = min(430, int(W * 0.42))
-        kh = min(650, int(H * 0.92))
+        kw = min(500, int(W * 0.46))
+        kh = min(740, int(H * 0.94))
         kx, ky = (W - kw) // 2, (H - kh) // 2
 
         cien = Image.new("L", (W, H), 0)
@@ -763,10 +823,10 @@ class EkranPin(tk.Canvas):
         y += 26
 
         # ---- klawiatura ----
-        odstep = 10
-        szer = (kw - 56 - odstep * 2) // 3
-        wys = max(46, min(62, (ky + kh - 74 - y) // 4 - odstep))
-        x0 = kx + 28
+        odstep = 12
+        szer = (kw - 60 - odstep * 2) // 3
+        wys = max(56, min(78, (ky + kh - 82 - y) // 4 - odstep))
+        x0 = kx + 30
 
         for i, znak in enumerate(self.KLAWISZE):
             kol, wier = i % 3, i // 3
@@ -786,7 +846,7 @@ class EkranPin(tk.Canvas):
             self.create_text(x + szer // 2, yy + wys // 2, text=znak,
                              fill=B["naAkcencie"] if znak == "OK" else (
                                  B["alarm"] if znak == "C" else B["tekst"]),
-                             font=("Segoe UI Semibold", 20 if znak != "OK" else 15))
+                             font=("Segoe UI Semibold", 26 if znak != "OK" else 18))
             self.pola.append((x, yy, x + szer, yy + wys, znak, i))
 
         y += 4 * (wys + odstep) + 6
@@ -859,17 +919,20 @@ class EkranPin(tk.Canvas):
             self.rysuj()
 
     def _zapomnialem(self):
-        messagebox.showinfo(
-            "Nie pamiętam PIN-u",
-            "PIN można przywrócić do fabrycznego 1234.\n\n"
-            "1. Zamknij program\n"
-            "2. Wklej w pasek adresu Eksploratora:\n"
-            "     %APPDATA%\\AWF-Kierowcy\n"
-            "3. Otwórz plik baza.json w Notatniku\n"
-            "4. Skasuj linię zaczynającą się od \"pin\"\n"
-            "5. Zapisz i uruchom program\n\n"
-            "Numery i historia zostaną nienaruszone.",
-            parent=self)
+        okno_tresci(
+            self, "Nie pamiętam PIN-u",
+            [("Program można odblokować bez utraty danych.", "tekst"),
+             ("", "odstep"),
+             ("1", "Zamknij program"),
+             ("2", "Wklej w pasek adresu Eksploratora:"),
+             ("", "kod:%APPDATA%\\AWF-Kierowcy"),
+             ("3", "Otwórz plik baza.json w Notatniku"),
+             ("4", "Skasuj linię zaczynającą się od \"pin\""),
+             ("5", "Zapisz plik i uruchom program"),
+             ("", "odstep"),
+             ("PIN wróci do fabrycznego 1234. "
+              "Numery, harmonogramy i historia zostaną nienaruszone.",
+              "tekst")])
 
 
 # ==========================================================================

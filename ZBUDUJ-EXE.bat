@@ -37,6 +37,7 @@ python -m PyInstaller --onedir --windowed --clean --noupx ^
   --manifest manifest.xml ^
   --add-data "ikona.ico;." ^
   --add-data "godlo-awf.png;." ^
+  --add-data "logowanie-tlo.jpg;." ^
   --add-data "logo-awf.png;." ^
   --add-data "kiosk-tlo.jpg;." ^
   --add-data "kiosk-uklad.json;." ^
