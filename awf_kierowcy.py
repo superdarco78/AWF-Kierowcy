@@ -69,14 +69,24 @@ def zastosuj_motyw(jasny):
 # ==========================================================================
 
 def zasob(nazwa):
-    """Sciezka do pliku dolaczonego do programu — inaczej ze zrodel,
-    inaczej po spakowaniu PyInstallerem."""
+    """Sciezka do pliku dolaczonego do programu.
+
+    Szuka po kolei we wszystkich miejscach, w ktorych PyInstaller potrafi
+    zostawic dolaczone pliki — inaczej po aktualizacji zdjecie tla potrafi
+    zniknac tylko dlatego, ze wyladowalo w innym podkatalogu.
+    """
+    miejsca = []
     if hasattr(sys, "_MEIPASS"):
-        p = os.path.join(sys._MEIPASS, nazwa)
+        miejsca.append(sys._MEIPASS)
+    if getattr(sys, "frozen", False):
+        obok = os.path.dirname(os.path.abspath(sys.executable))
+        miejsca += [obok, os.path.join(obok, "_internal")]
+    miejsca.append(os.path.dirname(os.path.abspath(__file__)))
+    for m in miejsca:
+        p = os.path.join(m, nazwa)
         if os.path.exists(p):
             return p
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), nazwa)
-    return p if os.path.exists(p) else None
+    return None
 
 
 def katalog_domyslny():
@@ -757,6 +767,14 @@ class EkranPin(tk.Frame):
                               highlightbackground=B["zloto2"])
         self.karta.place(relx=0.5, rely=0.5, anchor="center")
         self._buduj_karte()
+
+        # Numer wersji i stan aktualizacji — widoczne jeszcze przed PIN-em.
+        # Dyzurny ma wiedziec, co ma zainstalowane, bez logowania sie.
+        self.stopka = tk.Label(self, text="v" + VER, bg=B["tlo2"],
+                               fg=B["zloto2"], font=("Segoe UI", 9),
+                               padx=10, pady=4)
+        self.stopka.place(relx=0.99, rely=0.98, anchor="se")
+
         self.bind_all("<Key>", self._klawisz)
 
     # ---------------- tlo ----------------
@@ -768,7 +786,10 @@ class EkranPin(tk.Frame):
         self._rozmiar = (W, H)
         plik = zasob("logowanie-tlo.jpg")
         if not plik:
+            # Zdjecia nie ma — mowimy o tym wprost, zamiast pokazywac
+            # pusty ekran i zgadywac, czy to wina programu.
             self.tlo.configure(image="", bg=B["tlo"])
+            self.komunikat("brak pliku logowanie-tlo.jpg", B["uwaga"])
             return
         try:
             obraz = Image.open(plik).convert("RGB")
@@ -787,16 +808,42 @@ class EkranPin(tk.Frame):
             # brak zdjecia nie moze przeszkodzic w zalogowaniu
             self.tlo.configure(image="", bg=B["tlo"])
 
+    def komunikat(self, tekst, kolor=None):
+        """Napis w rogu ekranu logowania: wersja albo postep aktualizacji."""
+        try:
+            self.stopka.configure(text=tekst, fg=kolor or B["zloto2"])
+        except tk.TclError:
+            pass
+
+    def postep(self, ulamek, tekst=""):
+        """Zielony pasek wgrywania aktualizacji z procentami."""
+        ulamek = max(0.0, min(1.0, float(ulamek)))
+        try:
+            if not self.ramka_postepu.winfo_ismapped():
+                self.ramka_postepu.pack(fill="x", pady=(14, 0),
+                                        before=self._lbl_fabryczny)
+            self.lbl_postep.configure(
+                text=f"{tekst}  {round(ulamek * 100)}%".strip())
+            self.wypelnienie.place_configure(relwidth=ulamek)
+        except (tk.TclError, AttributeError):
+            pass
+
+    def schowaj_postep(self):
+        try:
+            self.ramka_postepu.pack_forget()
+        except (tk.TclError, AttributeError):
+            pass
+
     # ---------------- karta ----------------
 
     def _buduj_karte(self):
-        w = tk.Frame(self.karta, bg=B["tlo2"], padx=38, pady=30)
+        w = tk.Frame(self.karta, bg=B["tlo2"], padx=30, pady=22)
         w.pack()
 
         plik = zasob("godlo-awf.png")
         if plik:
             try:
-                obraz = Image.open(plik).convert("RGBA").resize((78, 78),
+                obraz = Image.open(plik).convert("RGBA").resize((62, 62),
                                                                 Image.LANCZOS)
                 self._godlo = ImageTk.PhotoImage(obraz)
                 tk.Label(w, image=self._godlo, bg=B["tlo2"]).pack()
@@ -804,26 +851,27 @@ class EkranPin(tk.Frame):
                 pass
 
         tk.Label(w, text=NAZWA, bg=B["tlo2"], fg=B["tekst"],
-                 font=("Segoe UI Semibold", 16)).pack(pady=(12, 0))
+                 font=("Segoe UI Semibold", 15)).pack(pady=(10, 0))
         tk.Label(w, text=PODTYTUL, bg=B["tlo2"], fg=B["przygasz"],
                  font=("Segoe UI", 10)).pack()
 
         self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcent"],
-                               font=("Segoe UI", 22))
-        self.kropki.pack(pady=(16, 0))
+                               font=("Segoe UI", 18), height=1)
+        self.kropki.pack(pady=(10, 0))
         self.info = tk.Label(w, text="", bg=B["tlo2"], fg=B["alarm"],
                              font=("Segoe UI", 9))
         self.info.pack()
 
         siatka = tk.Frame(w, bg=B["tlo2"])
-        siatka.pack(pady=(12, 0))
+        siatka.pack(pady=(8, 0))
         self.przyciski = []
         for i, znak in enumerate(self.KLAWISZE):
             glowny = znak == "OK"
             b = tk.Button(
                 siatka, text=znak, width=4, relief="flat", bd=0,
-                cursor="hand2", font=("Segoe UI Semibold", 22 if not glowny else 15),
-                pady=14, activeforeground=B["tekst"],
+                cursor="hand2",
+                font=("Segoe UI Semibold", 18 if not glowny else 14),
+                pady=9, activeforeground=B["tekst"],
                 bg=B["akcent"] if glowny else B["tlo3"],
                 fg=B["naAkcencie"] if glowny else (
                     B["alarm"] if znak == "C" else B["tekst"]),
@@ -832,9 +880,23 @@ class EkranPin(tk.Frame):
             b.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
             self.przyciski.append(b)
 
-        tk.Label(w, text="PIN fabryczny 1234 — zmień po pierwszym logowaniu",
-                 bg=B["tlo2"], fg=B["przygasz"],
-                 font=("Segoe UI", 8)).pack(pady=(14, 0))
+        # Pasek wgrywania aktualizacji — normalnie schowany, pokazuje sie
+        # dopiero wtedy, gdy program pobiera nowa wersje.
+        self.ramka_postepu = tk.Frame(w, bg=B["tlo2"])
+        self.lbl_postep = tk.Label(self.ramka_postepu, text="", bg=B["tlo2"],
+                                   fg=B["akcent"],
+                                   font=("Segoe UI Semibold", 9))
+        self.lbl_postep.pack(anchor="w")
+        tor = tk.Frame(self.ramka_postepu, bg=B["linia"], height=6)
+        tor.pack(fill="x", pady=(4, 0))
+        tor.pack_propagate(False)
+        self.wypelnienie = tk.Frame(tor, bg=B["akcent"])
+        self.wypelnienie.place(x=0, y=0, relwidth=0, relheight=1)
+
+        self._lbl_fabryczny = tk.Label(
+            w, text="PIN fabryczny 1234 — zmień po pierwszym logowaniu",
+            bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 8))
+        self._lbl_fabryczny.pack(pady=(12, 0))
         odn = tk.Label(w, text="Nie pamiętam PIN-u", bg=B["tlo2"],
                        fg=B["zloto"], font=("Segoe UI", 9, "underline"),
                        cursor="hand2")
@@ -1089,6 +1151,11 @@ class App(tk.Tk):
         self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
         self.ekran_pin.pack(fill="both", expand=True)
 
+        # Aktualizacja wgrywa sie sama, jeszcze przed wpisaniem PIN-u.
+        self._zalogowany = False
+        self._akt_stan = None
+        self.after(1200, self._cicha_aktualizacja)
+
         self.bind("<F11>", lambda _e: self.pelny_ekran())
         self.bind("<Escape>", self._escape)
 
@@ -1276,6 +1343,7 @@ class App(tk.Tk):
         return w
 
     def _zalogowano(self):
+        self._zalogowany = True
         self.ekran_pin.destroy()
         self._buduj()
         # Po zbudowaniu okna wymuszamy rozmiar jeszcze raz — dodanie
@@ -1290,7 +1358,10 @@ class App(tk.Tk):
         self._petla()
         if self._nowa_instalacja:
             self.after(400, self._pierwsze_uruchomienie)
-        self._sprawdz_aktualizacje()
+        # Gdy sprawdzenie przed PIN-em juz powiedzialo, ze wersja jest
+        # najnowsza, nie ma po co pytac serwera drugi raz.
+        if self._akt_stan != "aktualna":
+            self._sprawdz_aktualizacje()
 
     def zablokuj(self):
         if self.animacja:
@@ -2324,6 +2395,126 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             dziecko.bind("<Button-1>", zamknij)
         pasek.bind("<Button-1>", zamknij)
         self.after(8000, zamknij)
+
+    # ------- cicha aktualizacja przed zalogowaniem -------
+
+    def _cicha_aktualizacja(self):
+        """Sprawdza serwer i sam wgrywa nowa wersje, zanim ktos wpisze PIN.
+
+        Na ekranie logowania nikt nie pracuje, wiec zamkniecie i ponowne
+        uruchomienie programu niczego nie przerywa. W czasie sluzby juz tak
+        nie robimy — wtedy tylko pytamy oknem.
+        """
+        try:
+            import aktualizacje                      # noqa: F401
+        except ImportError:
+            return
+        import queue
+        import threading
+        self._kolejka_cicha = queue.Queue()
+
+        def robota():
+            import aktualizacje
+            self._kolejka_cicha.put(aktualizacje.stan_serwera(VER))
+
+        threading.Thread(target=robota, daemon=True).start()
+        self._odbierz_cicha()
+
+    def _odbierz_cicha(self):
+        import queue
+        try:
+            rodzaj, dane = self._kolejka_cicha.get_nowait()
+        except queue.Empty:
+            self.after(250, self._odbierz_cicha)
+            return
+        self._akt_stan = rodzaj
+        if rodzaj == "jest":
+            self._wgraj_po_cichu(dane)
+        elif rodzaj == "aktualna":
+            self._napis_pin("v" + VER + " — najnowsza")
+        else:
+            self._napis_pin("v" + VER)
+
+    def _napis_pin(self, tekst, kolor=None):
+        """Napis w rogu ekranu logowania — po zalogowaniu juz go nie ma."""
+        ekran = getattr(self, "ekran_pin", None)
+        try:
+            if ekran is not None and ekran.winfo_exists():
+                ekran.komunikat(tekst, kolor)
+        except tk.TclError:
+            pass
+
+    def _pasek_pin(self, ulamek, tekst=""):
+        ekran = getattr(self, "ekran_pin", None)
+        try:
+            if ekran is not None and ekran.winfo_exists():
+                ekran.postep(ulamek, tekst)
+        except tk.TclError:
+            pass
+
+    def _schowaj_pasek_pin(self):
+        ekran = getattr(self, "ekran_pin", None)
+        try:
+            if ekran is not None and ekran.winfo_exists():
+                ekran.schowaj_postep()
+        except tk.TclError:
+            pass
+
+    def _wgraj_po_cichu(self, info):
+        import queue
+        import threading
+        self._kolejka_wgrania = queue.Queue()
+        self._pasek_pin(0.0, f"Aktualizacja do {info['wersja']}")
+        self._napis_pin(f"v{VER} → {info['wersja']}", B["akcent"])
+        self.log(f'dostępna wersja {info["wersja"]} — wgrywam sama')
+
+        def robota():
+            import aktualizacje
+            try:
+                bat = aktualizacje.zainstaluj_po_cichu(
+                    info,
+                    postep=lambda u: self._kolejka_wgrania.put(("postep", u)))
+                self._kolejka_wgrania.put(("gotowe", bat))
+            except Exception as blad:                # noqa: BLE001
+                self._kolejka_wgrania.put(("blad", str(blad)))
+
+        threading.Thread(target=robota, daemon=True).start()
+        self._odbierz_wgranie(info)
+
+    def _odbierz_wgranie(self, info):
+        import queue
+        try:
+            rodzaj, tresc = self._kolejka_wgrania.get_nowait()
+        except queue.Empty:
+            self.after(200, lambda: self._odbierz_wgranie(info))
+            return
+
+        if rodzaj == "postep":
+            self._pasek_pin(tresc, f"Aktualizacja do {info['wersja']}")
+            self.after(100, lambda: self._odbierz_wgranie(info))
+            return
+
+        if rodzaj == "blad":
+            # Nieudane pobranie nie moze przeszkodzic w zalogowaniu.
+            self._schowaj_pasek_pin()
+            self._napis_pin("v" + VER)
+            self.log("cicha aktualizacja nieudana: " + str(tresc))
+            return
+
+        if self._zalogowany:
+            self._schowaj_pasek_pin()
+            # Ktos zdazyl wpisac PIN w trakcie pobierania. Nie zamykamy
+            # programu w czasie sluzby — podmiana poczeka do nastepnego
+            # uruchomienia, pliki juz leza gotowe.
+            self.log(f'wersja {info["wersja"]} pobrana — wgra się '
+                     'przy następnym uruchomieniu')
+            return
+
+        self._pasek_pin(1.0, "Zamykam się — zaraz wrócę w nowej wersji")
+        self.update_idletasks()
+        import aktualizacje
+        aktualizacje.uruchom_pomocnika(tresc)
+        self.after(400, self.destroy)
 
     def _sprawdz_aktualizacje(self):
         """Sprawdzenie przy starcie — po cichu. Gdy nie ma nowszej wersji

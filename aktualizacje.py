@@ -282,6 +282,19 @@ exit
 """
 
 
+def zainstaluj_po_cichu(info, postep=None):
+    """Pobiera, sprawdza sume, rozpakowuje i przygotowuje pomocnika.
+
+    Zwraca sciezke do pliku wsadowego. Uruchomienie go zamknie program
+    i podmieni pliki. Rzuca wyjatkiem, gdy cokolwiek sie nie uda —
+    lepiej zostac na starej wersji niz podmienic na polowe paczki.
+    """
+    plik = pobierz(info, postep=postep)
+    nowe = rozpakuj(plik)
+    return przygotuj_pomocnika(nowe, katalog_programu(),
+                               wersja=info.get("wersja", ""))
+
+
 def nazwa_programu():
     """Nazwa pliku programu — po spakowaniu PyInstallerem to plik exe."""
     if getattr(sys, "frozen", False):

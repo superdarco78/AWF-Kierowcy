@@ -16,10 +16,17 @@ Kliknij dwa razy `uruchom.bat`. Wymaga Pythona.
 
 ## Samoaktualizacja
 
-Program przy uruchomieniu sprawdza `wersja.json` w tym repozytorium.
-Gdy jest nowsza wersja, pokazuje okno z opisem zmian i sam się aktualizuje.
+**Na ekranie logowania program aktualizuje się sam.** Sprawdza `wersja.json`
+w tym repozytorium jeszcze przed wpisaniem PIN-u, pobiera nową wersję,
+podmienia pliki i wraca — bez pytania i bez klikania. Postęp widać w rogu
+ekranu logowania. Po zalogowaniu wita zielony pasek „Zaktualizowano do
+wersji X".
 
-Numer wersji widnieje w prawym górnym rogu programu.
+W czasie służby, gdy ktoś jest już zalogowany, program **nie zamyka się sam**.
+Wtedy pokazuje okno z opisem zmian i czeka na decyzję.
+
+Numer wersji widnieje w prawym górnym rogu programu, a przed zalogowaniem
+w prawym dolnym rogu ekranu PIN-u.
 
 ## Wgrywanie zmian
 
