@@ -1,8 +1,8 @@
 ; AWF KIEROWCY — instalator dla Windows
-; Numer wersji wpisuje budowanie na GitHubie, nie trzeba go zmieniac recznie.
+; Budowany automatycznie na GitHubie, nie trzeba uruchamiac recznie.
 
 #define NazwaApp    "AWF KIEROWCY"
-#define WersjaApp   "6.0.0"
+#define WersjaApp   "6.0.1"
 #define WydawcaApp  "Straz Akademicka AWF"
 #define StronaApp   "https://github.com/superdarco78/AWF-Kierowcy"
 #define PlikExe     "AWF-Kierowcy.exe"
@@ -19,7 +19,7 @@ AppSupportURL={#StronaApp}
 ; instalacja bez praw administratora — do katalogu uzytkownika.
 ; dzieki temu program moze sam podmieniac swoje pliki przy aktualizacji
 PrivilegesRequired=lowest
-DefaultDirName={userpf}\AWF-Kierowcy
+DefaultDirName={autopf}\AWF-Kierowcy
 DisableProgramGroupPage=yes
 DefaultGroupName={#NazwaApp}
 
@@ -30,6 +30,10 @@ UninstallDisplayIcon={app}\{#PlikExe}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+ArchitecturesInstallIn64BitMode=x64compatible
+
+; polska wersja jezykowa okna instalatora
+ShowLanguageDialog=no
 
 [Languages]
 Name: "polski"; MessagesFile: "compiler:Languages\Polish.isl"
@@ -54,3 +58,10 @@ Name: "{userstartup}\{#NazwaApp}"; Filename: "{app}\{#PlikExe}"; Tasks: autostar
 Filename: "{app}\{#PlikExe}"; \
   Description: "Uruchom {#NazwaApp}"; \
   Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; katalog roboczy programu w dist zostaje po odinstalowaniu — sprzatamy
+Type: filesandordirs; Name: "{app}\_internal"
+
+[Messages]
+polski.WelcomeLabel2=Program zainstaluje {#NazwaApp} {#WersjaApp} na tym komputerze.%n%nSystem kontroli wjazdu i wyjazdu dla Strazy Akademickiej AWF.%n%nZalecane jest zamkniecie innych programow przed kontynuacja.

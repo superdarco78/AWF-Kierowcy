@@ -29,6 +29,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
+# Jesli zmienisz nazwe repozytorium na GitHubie, popraw tylko te linijke.
 REPO = "superdarco78/AWF-Kierowcy"
 ADRES_WERSJI = f"https://raw.githubusercontent.com/{REPO}/main/wersja.json"
 LIMIT_S = 8
