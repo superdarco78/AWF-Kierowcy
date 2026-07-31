@@ -1,7 +1,7 @@
 {
-  "wersja": "6.1.10",
-  "opis": "Co nowego w 6.1.10:\n\n• pasek postepu aktualizacji i mniejsza karta log",
+  "wersja": "6.2.0",
+  "opis": "Co nowego w 6.2.0:\n\n• Nowe: barwy uczelni w calym programie",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "b94efabe95ee991f0a83ba30b5f85cea702cfca6c59ba3b751e984672d49dccc",
+  "suma": "29da3acb723a9d333d3a5df4bde2c5b63c3b4a48aea475e4426c56e2d74c0a86",
   "wymagana": false
 }
