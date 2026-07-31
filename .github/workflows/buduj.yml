@@ -1,0 +1,146 @@
+name: Buduj i wydaj
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'START.txt'
+      - 'wersja.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wydanie
+  cancel-in-progress: false
+
+jobs:
+  buduj:
+    runs-on: windows-latest
+    if: "!contains(github.event.head_commit.message, '[bez wydania]')"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ustal wersje i opis zmian
+        id: w
+        shell: bash
+        run: |
+          POPRZEDNIA=$(git tag --sort=-v:refname | grep '^v' | head -1 | sed 's/^v//')
+          if [ -z "$POPRZEDNIA" ]; then POPRZEDNIA="6.0.0"; fi
+          if git rev-parse "v$POPRZEDNIA" >/dev/null 2>&1; then
+            ZAKRES="v$POPRZEDNIA..HEAD"
+          else
+            ZAKRES="HEAD"
+          fi
+          OPISY=$(git log --format='%s' $ZAKRES)
+          RODZAJ="poprawka"
+          echo "$OPISY" | grep -qiE '^(nowe|feat|funkcja)' && RODZAJ="funkcja"
+          echo "$OPISY" | grep -qiE 'PRZELOM|BREAKING' && RODZAJ="przelom"
+          G=$(echo $POPRZEDNIA | cut -d. -f1)
+          S=$(echo $POPRZEDNIA | cut -d. -f2)
+          M=$(echo $POPRZEDNIA | cut -d. -f3)
+          [ -z "$S" ] && S=0
+          [ -z "$M" ] && M=0
+          case $RODZAJ in
+            przelom)  G=$((G+1)); S=0; M=0 ;;
+            funkcja)  S=$((S+1)); M=0 ;;
+            poprawka) M=$((M+1)) ;;
+          esac
+          NOWA="$G.$S.$M"
+          LISTA=$(git log --format='%s' $ZAKRES | grep -viE '^(Merge|wersja [0-9]|budowanie|Add files via upload)' | sed 's/^/• /' | head -10)
+          [ -z "$LISTA" ] && LISTA="• drobne poprawki"
+          echo "nowa=$NOWA" >> $GITHUB_OUTPUT
+          {
+            echo "opis<<KONIEC"
+            echo "Co nowego w $NOWA:"
+            echo ""
+            echo "$LISTA"
+            echo "KONIEC"
+          } >> $GITHUB_OUTPUT
+          echo "Nowa wersja: $NOWA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Zainstaluj narzedzia
+        run: python -m pip install --upgrade pip pyinstaller pillow
+
+      - name: Wpisz numer wersji
+        shell: bash
+        run: |
+          W="${{ steps.w.outputs.nowa }}"
+          sed -i "s/^VER = \".*\"/VER = \"$W\"/" awf_kierowcy.py
+          sed -i "s/#define WersjaApp   \".*\"/#define WersjaApp   \"$W\"/" instalator.iss
+          grep -n '^VER' awf_kierowcy.py
+
+      - name: Zbuduj program
+        run: >
+          python -m PyInstaller --onedir --windowed --clean --noupx
+          --name "AWF-Kierowcy"
+          --icon ikona.ico
+          --manifest manifest.xml
+          --add-data "ikona.ico;."
+          --add-data "godlo-awf.png;."
+          --add-data "logo-awf.png;."
+          --add-data "kiosk-tlo.jpg;."
+          --add-data "kiosk-uklad.json;."
+          --add-data "kiosk-korpus1.png;."
+          --add-data "kiosk-korpus2.png;."
+          --add-data "kiosk-korpus3.png;."
+          --add-data "kiosk-korpus4.png;."
+          --add-data "kiosk-plyta1.png;."
+          --add-data "kiosk-plyta2.png;."
+          --add-data "kiosk-plyta3.png;."
+          --add-data "kiosk-plyta4.png;."
+          awf_kierowcy.py
+
+      - name: Zbuduj instalator
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" instalator.iss
+          Get-ChildItem *.exe | Format-Table Name, Length
+
+      - name: Spakuj wersje przenosna
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\AWF-Kierowcy\* -DestinationPath AWF-Kierowcy.zip -Force
+          $suma = (Get-FileHash AWF-Kierowcy.zip -Algorithm SHA256).Hash.ToLower()
+          "SUMA=$suma" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Zapisz wersja.json
+        shell: bash
+        run: |
+          python - <<'PYTHON'
+          import json, os
+          dane = {
+              "wersja": "${{ steps.w.outputs.nowa }}",
+              "opis": """${{ steps.w.outputs.opis }}""",
+              "paczka": "https://github.com/${{ github.repository }}/releases/latest/download/AWF-Kierowcy.zip",
+              "suma": os.environ["SUMA"],
+              "wymagana": False,
+          }
+          with open("wersja.json", "w", encoding="utf-8") as f:
+              json.dump(dane, f, ensure_ascii=False, indent=2)
+          PYTHON
+          git config user.name "budowanie"
+          git config user.email "budowanie@users.noreply.github.com"
+          git add wersja.json
+          git diff --staged --quiet || git commit -m "wersja ${{ steps.w.outputs.nowa }}"
+          git push
+
+      - name: Opublikuj wydanie
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.w.outputs.nowa }}
+          name: AWF KIEROWCY ${{ steps.w.outputs.nowa }}
+          body: ${{ steps.w.outputs.opis }}
+          files: |
+            AWF-Kierowcy-Instalator-*.exe
+            AWF-Kierowcy.zip
