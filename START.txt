@@ -1,0 +1,14 @@
+==========================================
+   AWF KIEROWCY
+==========================================
+
+   NA DYSKU:
+   Kliknij dwa razy:  uruchom.bat
+   PIN: 1234
+
+   NA GITHUBIE:
+   Wgraj wszystkie pliki z tego folderu.
+   Reszta zrobi sie sama - budowanie
+   zbuduje instalator i opublikuje wydanie.
+
+==========================================

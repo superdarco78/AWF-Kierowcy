@@ -1,0 +1,45 @@
+{
+  "tlo": "kiosk-tlo.jpg",
+  "foto": [
+    1700,
+    1275
+  ],
+  "slupki": [
+    {
+      "cx": 139,
+      "grunt": 259,
+      "szer": 45,
+      "korpus": "kiosk-korpus1.png",
+      "plyta": "kiosk-plyta1.png",
+      "wys_korpus": 110,
+      "wys_plyta": 16
+    },
+    {
+      "cx": 400,
+      "grunt": 284,
+      "szer": 54,
+      "korpus": "kiosk-korpus2.png",
+      "plyta": "kiosk-plyta2.png",
+      "wys_korpus": 136,
+      "wys_plyta": 20
+    },
+    {
+      "cx": 568,
+      "grunt": 314,
+      "szer": 58,
+      "korpus": "kiosk-korpus3.png",
+      "plyta": "kiosk-plyta3.png",
+      "wys_korpus": 148,
+      "wys_plyta": 22
+    },
+    {
+      "cx": 780,
+      "grunt": 357,
+      "szer": 66,
+      "korpus": "kiosk-korpus4.png",
+      "plyta": "kiosk-plyta4.png",
+      "wys_korpus": 190,
+      "wys_plyta": 28
+    }
+  ]
+}

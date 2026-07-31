@@ -1,0 +1,1276 @@
+"""
+AWF KIEROWCY — kontrola wjazdu i wyjazdu
+Straz Akademicka AWF Jozefa Pilsudskiego w Warszawie
+
+Przepisane ze wzorca interfejsu. Wszystkie kolory siedza w slowniku BARWY,
+zeby zmiana motywu byla jedna podmiana, a nie szukaniem po pliku.
+"""
+
+import json
+import os
+import sys
+import hashlib
+from datetime import datetime, timedelta
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+try:
+    from PIL import Image, ImageTk, ImageDraw, ImageFilter
+except ImportError:
+    print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
+    sys.exit(1)
+
+VER = "6.1"
+NAZWA = "AWF KIEROWCY"
+PODTYTUL = "Kontrola wjazdu i wyjazdu"
+
+DNI = ["pn", "wt", "sr", "cz", "pt", "so", "nd"]
+DNI_PELNE = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek",
+             "sobota", "niedziela"]
+
+
+# ==========================================================================
+# barwy — dwa komplety, jak w bloku :root i body.jasny we wzorcu
+# ==========================================================================
+
+CIEMNY = {
+    "tlo": "#071b13", "tlo2": "#0d2419", "tlo3": "#143024", "linia": "#1f4633",
+    "tekst": "#e9f2ec", "tekst2": "#a9c2b4", "przygasz": "#7d998a",
+    "akcent": "#00a86b", "akcent2": "#008a58",
+    "zloto": "#c9a86e", "zloto2": "#b9975b",
+    "ok": "#00a86b", "uwaga": "#c9a86e", "alarm": "#ff6b6b",
+    "naAkcencie": "#04220e", "naPanelu": "#eaf3ed",
+    "panel": (8, 20, 15, 194), "panelRamka": (201, 168, 110, 56),
+    "scenaTlo": "#0a0e13", "welon": 0,
+}
+
+JASNY = {
+    "tlo": "#f4f7f4", "tlo2": "#ffffff", "tlo3": "#e7efe9", "linia": "#cddbd2",
+    "tekst": "#0b2318", "tekst2": "#33523f", "przygasz": "#4b6a57",
+    "akcent": "#006341", "akcent2": "#004d33",
+    "zloto": "#8a6a2e", "zloto2": "#b9975b",
+    "ok": "#006341", "uwaga": "#8a6a2e", "alarm": "#b32626",
+    "naAkcencie": "#ffffff", "naPanelu": "#0b2318",
+    "panel": (255, 255, 255, 219), "panelRamka": (0, 99, 65, 56),
+    "scenaTlo": "#dde6e0", "welon": 56,
+}
+
+B = dict(CIEMNY)          # biezaca paleta
+
+
+def zastosuj_motyw(jasny):
+    B.clear()
+    B.update(JASNY if jasny else CIEMNY)
+
+
+# ==========================================================================
+# pliki i dane
+# ==========================================================================
+
+def zasob(nazwa):
+    """Sciezka do pliku dolaczonego do programu — inaczej ze zrodel,
+    inaczej po spakowaniu PyInstallerem."""
+    if hasattr(sys, "_MEIPASS"):
+        p = os.path.join(sys._MEIPASS, nazwa)
+        if os.path.exists(p):
+            return p
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), nazwa)
+    return p if os.path.exists(p) else None
+
+
+def katalog_danych():
+    baza = os.environ.get("APPDATA") or os.path.expanduser("~")
+    kat = os.path.join(baza, "AWF-Kierowcy")
+    os.makedirs(kat, exist_ok=True)
+    return kat
+
+
+PLIK_BAZY = os.path.join(katalog_danych(), "baza.json")
+SOL = "awf-kierowcy-2026"
+
+
+def zakoduj_pin(pin):
+    return hashlib.sha256((SOL + str(pin)).encode()).hexdigest()
+
+
+def domyslna_baza():
+    return {
+        "pin": zakoduj_pin("1234"),
+        "motyw": "ciemny",
+        "nazwa": NAZWA,
+        "podtytul": PODTYTUL,
+        "obiekty": [
+            {"id": "zapora", "nazwa": "Zapora słupkowa",
+             "miejsce": "Wjazd główny — Marymoncka", "typ": "slupki",
+             "sim": "+48 500 100 200", "impuls": 500, "czas": 8,
+             "auto": True, "zwloka": 2, "tryb": "prywatny"},
+            {"id": "szlaban-g", "nazwa": "Szlaban",
+             "miejsce": "Wjazd gospodarczy — Kozielska", "typ": "szlaban",
+             "sim": "+48 500 100 201", "impuls": 500, "czas": 10,
+             "auto": True, "zwloka": 2, "tryb": "prywatny"},
+            {"id": "szlaban-p", "nazwa": "Szlaban",
+             "miejsce": "Parking pracowniczy", "typ": "szlaban",
+             "sim": "+48 500 100 202", "impuls": 500, "czas": 8,
+             "auto": True, "zwloka": 2, "tryb": "prywatny"},
+        ],
+        "kierowcy": [
+            {"imie": "Jan Kowalski", "rola": "Straż Akademicka",
+             "tel": "+48 601 234 567", "dni": list(DNI), "od": "00:00",
+             "do": "23:59", "wazny": "", "ile": 412, "aktywny": True},
+            {"imie": "Anna Nowak", "rola": "Straż Akademicka",
+             "tel": "+48 602 345 678", "dni": list(DNI), "od": "00:00",
+             "do": "23:59", "wazny": "", "ile": 388, "aktywny": True},
+            {"imie": "prof. Barbara Lis", "rola": "Rektorat",
+             "tel": "+48 606 111 222", "dni": list(DNI), "od": "05:00",
+             "do": "23:00", "wazny": "", "ile": 196, "aktywny": True},
+            {"imie": "Trans-Bud sp. z o.o.", "rola": "Dostawca",
+             "tel": "+48 603 456 789", "dni": DNI[:5], "od": "06:00",
+             "do": "18:00", "wazny": "2026-12-31", "ile": 87, "aktywny": True},
+            {"imie": "Cateringowa Kuchnia", "rola": "Dostawca",
+             "tel": "+48 662 777 888", "dni": DNI[:5], "od": "05:30",
+             "do": "11:00", "wazny": "2027-06-30", "ile": 203, "aktywny": True},
+            {"imie": "Robert Wiśniewski", "rola": "Były pracownik",
+             "tel": "+48 667 343 434", "dni": list(DNI), "od": "00:00",
+             "do": "23:59", "wazny": "", "ile": 0, "aktywny": False},
+        ],
+        "historia": [],
+    }
+
+
+def wczytaj():
+    if os.path.exists(PLIK_BAZY):
+        try:
+            with open(PLIK_BAZY, encoding="utf-8") as f:
+                d = json.load(f)
+            wzor = domyslna_baza()
+            for k, v in wzor.items():
+                d.setdefault(k, v)
+            return d
+        except (json.JSONDecodeError, OSError):
+            pass
+    d = domyslna_baza()
+    zapisz(d)
+    return d
+
+
+def zapisz(d):
+    try:
+        tmp = PLIK_BAZY + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, PLIK_BAZY)      # zapis atomowy — brak polowicznych plikow
+    except OSError as e:
+        print("Nie udalo sie zapisac bazy:", e)
+
+
+# ==========================================================================
+# uprawnienia
+# ==========================================================================
+
+def sprawdz_dostep(k, teraz=None):
+    """Czy kierowca moze teraz wjechac. Zwraca (tak/nie, powod)."""
+    teraz = teraz or datetime.now()
+    if not k.get("aktywny", True):
+        return False, "numer zablokowany"
+    if k.get("wazny"):
+        try:
+            if datetime.strptime(k["wazny"], "%Y-%m-%d").date() < teraz.date():
+                return False, "uprawnienie wygasło " + k["wazny"]
+        except ValueError:
+            pass
+    dzien = DNI[teraz.weekday()]
+    if dzien not in k.get("dni", DNI):
+        return False, "dziś poza harmonogramem"
+    g = teraz.strftime("%H:%M")
+    od, do = k.get("od", "00:00"), k.get("do", "23:59")
+    ok = (od <= g <= do) if od <= do else (g >= od or g <= do)
+    return (True, "") if ok else (False, f"poza godzinami {od}–{do}")
+
+
+def opis_harmonogramu(k):
+    dni = k.get("dni", DNI)
+    if len(dni) == 7 and k.get("od") == "00:00" and k.get("do") == "23:59":
+        return "cały czas"
+    if dni == DNI[:5]:
+        nazwa = "pn–pt"
+    elif len(dni) == 7:
+        nazwa = "codziennie"
+    else:
+        nazwa = ",".join(dni)
+    return f"{nazwa} · {k.get('od','00:00')}–{k.get('do','23:59')}"
+
+
+# ==========================================================================
+# scena — zdjecie wjazdu ze slupkami
+# ==========================================================================
+
+def cien_styku(szer, wys, krycie):
+    """Miekki cien przy podstawie — przyciemnia bruk, nie zakrywa go."""
+    szer, wys = max(4, szer), max(4, wys)
+    m = 6
+    maska = Image.new("L", (szer + m * 2, wys + m * 2), 0)
+    d = ImageDraw.Draw(maska)
+    for i in range(6, 0, -1):
+        t = i / 6.0
+        d.ellipse([m + szer * (1 - t) / 2, m + wys * (1 - t) / 2,
+                   m + szer - szer * (1 - t) / 2, m + wys - wys * (1 - t) / 2],
+                  fill=int(krycie * (1 - t) ** 0.7 + krycie * 0.18))
+    maska = maska.filter(ImageFilter.GaussianBlur(max(1.5, szer * 0.06)))
+    cien = Image.new("RGBA", maska.size, (12, 14, 16, 0))
+    cien.putalpha(maska)
+    return cien
+
+
+class Scena(tk.Canvas):
+    """Podglad obiektu. Dla zapory sklada zdjecie, dla szlabanu rysuje."""
+
+    def __init__(self, rodzic, **kw):
+        super().__init__(rodzic, highlightthickness=0, bd=0,
+                         bg=B["scenaTlo"], **kw)
+        self.material = None
+        self.typ = "slupki"
+        self.nazwa_obiektu = ""
+        self.postep = 1.0            # 1 = zamknieta, 0 = otwarta
+        self.faza = "spoczynek"
+        self.kto = ""
+        self.tel = ""
+        self.powod = ""
+        self.dzis = 0
+        self.modul = "LTE · 77%"
+        self.zablokowana = False
+        self.on_przycisk = None
+        self._kiosk = None
+        self._cache = {}
+        self._trzymaj = []
+        self.przyciski = []
+        self.bind("<Button-1>", self._klik)
+
+    # ---------------- material zdjeciowy ----------------
+
+    def wczytaj_material(self):
+        try:
+            uk, tlo = zasob("kiosk-uklad.json"), zasob("kiosk-tlo.jpg")
+            if not uk or not tlo:
+                return None
+            with open(uk, encoding="utf-8") as f:
+                dane = json.load(f)
+            dane["_tlo"] = Image.open(tlo).convert("RGB")
+            for sl in dane["slupki"]:
+                kp, pl = zasob(sl["korpus"]), zasob(sl["plyta"])
+                if not kp or not pl:
+                    return None
+                sl["_korpus"] = Image.open(kp).convert("RGBA")
+                sl["_plyta"] = Image.open(pl).convert("RGBA")
+            return dane
+        except (OSError, ValueError, KeyError):
+            return None
+
+    # ---------------- uklad ----------------
+
+    def uklad(self, W, H):
+        m = 14
+        wys_kafli = 74
+        szer = (W - 2 * m - 3 * 8) // 4
+        przyciski = []
+        x = W - m - 4 * szer - 3 * 8
+        for _ in range(4):
+            przyciski.append((x, H - m - 44, x + szer, H - m - 8))
+            x += szer + 8
+        return {
+            "tytul": (m, m, m + 430, m + 44),
+            "kafle": (m, H - m - wys_kafli, W - m, H - m),
+            "przyciski": przyciski,
+            "wys_kafli": wys_kafli,
+        }
+
+    def przelicz(self, W, H):
+        """Kadruje zdjecie tak, by zaden slupek nie wszedl pod kafelki."""
+        f = self.material
+        fw, fh = f["_tlo"].size
+        prop = W / float(H)
+        LP = self.uklad(W, H)
+
+        wolne = W - 80
+        cx_min = min(s["cx"] - s["szer"] * 0.75 for s in f["slupki"])
+        cx_max = max(s["cx"] + s["szer"] * 0.75 for s in f["slupki"])
+        sk = wolne / float(max(60, cx_max - cx_min))
+        kw = int(W / sk)
+        kh = int(kw / prop)
+        if kw > fw or kh > fh:
+            kw = min(fw, int(fh * prop))
+            kh = int(kw / prop)
+            sk = W / float(kw)
+        kx = max(0, min(int(cx_min - 40 / sk), fw - kw))
+        gora = min(s["grunt"] - s["wys_korpus"] for s in f["slupki"])
+        srodek = sum(s["grunt"] for s in f["slupki"]) / len(f["slupki"])
+        ky = max(0, min(int(min(gora - kh * 0.14, srodek - kh * 0.55)), fh - kh))
+
+        kadr = f["_tlo"].crop((kx, ky, kx + kw, ky + kh)).resize(
+            (W, H), Image.LANCZOS)
+
+        if B["welon"]:
+            welon = Image.new("RGBA", (W, H), (255, 255, 255, B["welon"]))
+            kadr = Image.alpha_composite(kadr.convert("RGBA"), welon).convert("RGB")
+
+        naklad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(naklad)
+        d.rounded_rectangle(list(LP["tytul"]), radius=11, fill=B["panel"],
+                            outline=B["panelRamka"], width=1)
+        kx1, ky1, kx2, ky2 = LP["kafle"]
+        d.rounded_rectangle([kx1, ky1, kx2, ky2], radius=11, fill=B["panel"],
+                            outline=B["panelRamka"], width=1)
+        for i, (x1, y1, x2, y2) in enumerate(LP["przyciski"]):
+            if i == 0:
+                wyp = tuple(int(B["akcent"][j:j + 2], 16)
+                            for j in (1, 3, 5)) + (235,)
+                ob = None
+            else:
+                wyp, ob = (255, 255, 255, 34), (255, 255, 255, 96)
+            d.rounded_rectangle([x1, y1, x2, y2], radius=8, fill=wyp,
+                                outline=ob, width=1)
+        gotowe = Image.alpha_composite(kadr.convert("RGBA"), naklad).convert("RGB")
+
+        self._kiosk = {"W": W, "H": H, "sk": sk, "kx": kx, "ky": ky,
+                       "uklad": LP, "tk": ImageTk.PhotoImage(gotowe)}
+        self._cache = {}
+
+    # ---------------- rysowanie ----------------
+
+    def rysuj(self):
+        self.delete("all")
+        W = max(self.winfo_width(), 640)
+        H = max(self.winfo_height(), 380)
+        if self.typ == "slupki" and self.material:
+            self._rysuj_zdjecie(W, H)
+        else:
+            self._rysuj_szlaban(W, H)
+
+    def _rysuj_zdjecie(self, W, H):
+        if not self._kiosk or self._kiosk["W"] != W or self._kiosk["H"] != H:
+            self.przelicz(W, H)
+        k = self._kiosk
+        self._trzymaj = [k["tk"]]
+        self.create_image(0, 0, image=k["tk"], anchor="nw")
+
+        sk = k["sk"]
+        krok = max(0, min(48, int(round(self.postep * 48))))
+        for i, sl in enumerate(self.material["slupki"]):
+            ex = (sl["cx"] - k["kx"]) * sk
+            ey = (sl["grunt"] - k["ky"]) * sk
+            szer_e = max(2, int(sl["szer"] * sk))
+            udzial = krok / 48.0
+
+            if udzial > 0.02:
+                kl = ("cien", i, szer_e, int(udzial * 10))
+                if kl not in self._cache:
+                    self._cache[kl] = ImageTk.PhotoImage(cien_styku(
+                        int(szer_e * (2.1 + 0.9 * udzial)),
+                        max(6, int(szer_e * (0.62 + 0.28 * udzial))),
+                        int(96 * udzial)))
+                self._trzymaj.append(self._cache[kl])
+                self.create_image(ex, ey + max(1, int(sl["wys_plyta"] * sk * 0.3)),
+                                  image=self._cache[kl], anchor="center")
+
+            kl = ("plyta", i, szer_e)
+            if kl not in self._cache:
+                hp = max(2, int(sl["wys_plyta"] * sk))
+                self._cache[kl] = ImageTk.PhotoImage(
+                    sl["_plyta"].resize((szer_e, hp), Image.LANCZOS))
+            self._trzymaj.append(self._cache[kl])
+            self.create_image(ex, ey, image=self._cache[kl], anchor="s")
+
+            wys_e = max(2, int(sl["wys_korpus"] * sk))
+            widoczne = int(wys_e * krok / 48.0)
+            if widoczne < 3:
+                continue
+            kl = ("korpus", i, krok, szer_e)
+            if kl not in self._cache:
+                pelny = sl["_korpus"].resize((szer_e, wys_e), Image.LANCZOS)
+                self._cache[kl] = ImageTk.PhotoImage(
+                    pelny.crop((0, 0, szer_e, widoczne)))
+            self._trzymaj.append(self._cache[kl])
+            dol = ey - max(1, int(sl["wys_plyta"] * sk * 0.45))
+            self.create_image(ex, dol - widoczne, image=self._cache[kl], anchor="n")
+
+        self._hud(k["uklad"], W, H)
+
+    def _rysuj_szlaban(self, W, H):
+        LP = self.uklad(W, H)
+        self._kiosk = {"W": W, "H": H, "uklad": LP}
+        gorny = "#1d2f4a" if B is CIEMNY or B["welon"] == 0 else "#cfe3f5"
+        self.create_rectangle(0, 0, W, H * 0.62, fill=gorny, outline="")
+        self.create_rectangle(0, H * 0.62, W, H, fill="#252a31"
+                              if B["welon"] == 0 else "#9ba4ae", outline="")
+        for x in range(30, W, 130):
+            self.create_rectangle(x, H * 0.80, x + 70, H * 0.80 + 9,
+                                  fill="#4a5460" if B["welon"] == 0 else "#eef2f6",
+                                  outline="")
+        sx, sy = W * 0.30, H * 0.62
+        self.create_rectangle(sx - 23, sy - 128, sx + 23, sy, fill="#39424e"
+                              if B["welon"] == 0 else "#7b8794", outline="")
+        self.create_rectangle(sx - 37, sy - 14, sx + 37, sy, fill="#39424e"
+                              if B["welon"] == 0 else "#7b8794", outline="")
+        ruch = self.faza not in ("spoczynek", "blokada", "otwarty_staly")
+        kol = "#f2b544" if ruch else ("#37c76a" if self.postep < 0.1 else "#4a3a1c")
+        self.create_oval(sx - 13, sy - 154, sx + 13, sy - 128, fill=kol, outline="")
+
+        import math
+        kat = math.radians(self.postep * 82 - 82)
+        dl = W * 0.56
+        x0, y0 = sx, sy - 120
+        for i in range(8):
+            a, b = i * dl / 8, (i + 1) * dl / 8
+            x1, y1 = x0 + a * math.cos(kat), y0 + a * math.sin(kat)
+            x2, y2 = x0 + b * math.cos(kat), y0 + b * math.sin(kat)
+            self.create_line(x1, y1, x2, y2, width=17,
+                             fill="#d33c40" if i % 2 == 0 else "#f0f3f6",
+                             capstyle="butt")
+        self._hud(LP, W, H)
+
+    def _stan(self):
+        return {
+            "spoczynek": (("ZAPORA ZAMKNIĘTA" if self.typ == "slupki"
+                           else "SZLABAN OPUSZCZONY"), B["zloto"]),
+            "blokada": ("BLOKADA — POŁĄCZENIA IGNOROWANE", B["alarm"]),
+            "dzwoni": ("POŁĄCZENIE PRZYCHODZĄCE", B["uwaga"]),
+            "otwieranie": (("SŁUPKI OPADAJĄ" if self.typ == "slupki"
+                            else "SZLABAN SIĘ PODNOSI"), B["ok"]),
+            "otwarty": ("PRZEJAZD WOLNY", B["ok"]),
+            "otwarty_staly": ("PRZEJAZD OTWARTY NA STAŁE", B["uwaga"]),
+            "zamykanie": (("SŁUPKI PODNOSZĄ SIĘ" if self.typ == "slupki"
+                           else "SZLABAN OPADA"), B["uwaga"]),
+            "odmowa": ("DOSTĘP ZABLOKOWANY", B["alarm"]),
+        }.get(self.faza, ("GOTOWA", B["tekst"]))
+
+    def _hud(self, LP, W, H):
+        x1, y1, x2, y2 = LP["tytul"]
+        self.create_text(x1 + 16, (y1 + y2) / 2 - 1,
+                         text=self.nazwa_obiektu.upper(), anchor="w",
+                         fill=B["naPanelu"], font=("Segoe UI Semibold", 11))
+        self.create_text(x2 - 16, (y1 + y2) / 2 - 1,
+                         text=datetime.now().strftime("%d.%m.%Y  %H:%M:%S"),
+                         anchor="e", fill=B["przygasz"], font=("Consolas", 10))
+
+        opis, kolor = self._stan()
+        kx1, ky1, kx2, ky2 = LP["kafle"]
+        gy = ky1 + 20
+        self.create_text(kx1 + 18, gy, text="STAN", anchor="w",
+                         fill=B["przygasz"], font=("Segoe UI", 8))
+        self.create_oval(kx1 + 18, gy + 14, kx1 + 27, gy + 23, fill=kolor,
+                         outline="")
+        self.create_text(kx1 + 34, gy + 19, text=opis, anchor="w", fill=kolor,
+                         font=("Segoe UI Semibold", 10))
+
+        px = kx1 + 320
+        for etykieta, wartosc in (("WJEŻDŻA", self.kto or "—"),
+                                  ("TELEFON", self.powod or self.tel or "—"),
+                                  ("MODUŁ", self.modul),
+                                  ("DZIŚ", str(self.dzis))):
+            if px > LP["przyciski"][0][0] - 110:
+                break
+            self.create_text(px, gy, text=etykieta, anchor="w",
+                             fill=B["przygasz"], font=("Segoe UI", 8))
+            self.create_text(px, gy + 19, text=wartosc[:26], anchor="w",
+                             fill=B["alarm"] if (etykieta == "TELEFON" and self.powod)
+                             else B["naPanelu"], font=("Segoe UI", 10))
+            px += 175
+
+        self.przyciski = []
+        nazwy = ["Wpuść pojazd", "Otwórz na stałe",
+                 "Zamknij" if self.typ == "slupki" else "Opuść",
+                 "Zdejmij blokadę" if self.zablokowana else "Blokada"]
+        for i, ((bx1, by1, bx2, by2), tekst) in enumerate(
+                zip(LP["przyciski"], nazwy)):
+            self.create_text((bx1 + bx2) / 2, (by1 + by2) / 2, text=tekst,
+                             fill=B["naAkcencie"] if i == 0 else B["naPanelu"],
+                             font=("Segoe UI Semibold", 9))
+            self.przyciski.append((bx1, by1, bx2, by2, i))
+
+        bw = min(240, (kx2 - kx1) * 0.3)
+        self.create_rectangle(kx2 - 18 - bw, ky2 - 12, kx2 - 18, ky2 - 7,
+                              fill=B["tlo3"], outline="")
+        self.create_rectangle(kx2 - 18 - bw, ky2 - 12,
+                              kx2 - 18 - bw + bw * (1 - self.postep), ky2 - 7,
+                              fill=B["akcent"], outline="")
+
+    def _klik(self, e):
+        for x1, y1, x2, y2, nr in self.przyciski:
+            if x1 <= e.x <= x2 and y1 <= e.y <= y2:
+                if self.on_przycisk:
+                    self.on_przycisk(nr)
+                return
+
+
+# ==========================================================================
+# ekran logowania
+# ==========================================================================
+
+class EkranPin(tk.Frame):
+    def __init__(self, rodzic, sprawdz, po_zalogowaniu):
+        super().__init__(rodzic, bg=B["tlo"])
+        self.sprawdz = sprawdz
+        self.po_zalogowaniu = po_zalogowaniu
+        self.wpisany = ""
+        self.proby = 0
+        self._buduj()
+        self.bind_all("<Key>", self._klawisz)
+
+    def _buduj(self):
+        karta = tk.Frame(self, bg=B["tlo2"], highlightthickness=1,
+                         highlightbackground=B["linia"])
+        karta.place(relx=0.5, rely=0.5, anchor="center")
+        w = tk.Frame(karta, bg=B["tlo2"], padx=34, pady=30)
+        w.pack()
+
+        g = zasob("godlo-awf.png")
+        if g:
+            obraz = Image.open(g).convert("RGBA").resize((74, 74), Image.LANCZOS)
+            self._godlo = ImageTk.PhotoImage(obraz)
+            tk.Label(w, image=self._godlo, bg=B["tlo2"]).pack()
+
+        tk.Label(w, text=NAZWA, bg=B["tlo2"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 15)).pack(pady=(12, 0))
+        tk.Label(w, text=PODTYTUL, bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 9)).pack()
+
+        self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcent"],
+                               font=("Segoe UI", 20))
+        self.kropki.pack(pady=(18, 0))
+        self.info = tk.Label(w, text="", bg=B["tlo2"], fg=B["alarm"],
+                             font=("Segoe UI", 9))
+        self.info.pack()
+
+        siatka = tk.Frame(w, bg=B["tlo2"])
+        siatka.pack(pady=(10, 0))
+        for i, znak in enumerate(["1", "2", "3", "4", "5", "6",
+                                  "7", "8", "9", "C", "0", "OK"]):
+            glowny = znak == "OK"
+            b = tk.Button(
+                siatka, text=znak, width=5, relief="flat", bd=0, cursor="hand2",
+                font=("Segoe UI Semibold", 14), pady=10,
+                bg=B["akcent"] if glowny else B["tlo3"],
+                fg=B["naAkcencie"] if glowny else (
+                    B["alarm"] if znak == "C" else B["tekst"]),
+                activebackground=B["zloto"] if glowny else B["linia"],
+                command=lambda z=znak: self.klik(z))
+            b.grid(row=i // 3, column=i % 3, padx=3, pady=3, sticky="nsew")
+
+        tk.Label(w, text="PIN fabryczny 1234 — zmień po pierwszym logowaniu",
+                 bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 8)).pack(pady=(14, 0))
+
+    def klik(self, znak):
+        if znak == "C":
+            self.wpisany = ""
+        elif znak == "OK":
+            self._sprawdz()
+            return
+        elif len(self.wpisany) < 8:
+            self.wpisany += znak
+        self.kropki.configure(text="● " * len(self.wpisany))
+        self.info.configure(text="")
+
+    def _klawisz(self, e):
+        if not self.winfo_ismapped():
+            return
+        if e.char.isdigit():
+            self.klik(e.char)
+        elif e.keysym == "Return":
+            self.klik("OK")
+        elif e.keysym == "BackSpace":
+            self.klik("C")
+
+    def _sprawdz(self):
+        if self.sprawdz(self.wpisany):
+            self.unbind_all("<Key>")
+            self.po_zalogowaniu()
+        else:
+            self.proby += 1
+            self.wpisany = ""
+            self.kropki.configure(text="")
+            if self.proby >= 5:
+                self.info.configure(
+                    text="Zablokowano — uruchom program ponownie")
+                for b in self.winfo_children():
+                    b.configure(state="disabled")
+            else:
+                self.info.configure(text=f"Błędny PIN — próba {self.proby} z 5")
+
+
+# ==========================================================================
+# okno glowne
+# ==========================================================================
+
+class App(tk.Tk):
+    ZAKLADKI = [("podglad", "PODGLĄD"), ("kierowcy", "KIEROWCY"),
+                ("sterownik", "STEROWNIK"), ("historia", "HISTORIA"),
+                ("ustawienia", "USTAWIENIA")]
+
+    def __init__(self):
+        super().__init__()
+        self.d = wczytaj()
+        zastosuj_motyw(self.d.get("motyw") == "jasny")
+        self.obiekt = 0
+        self.wybrany = 0
+        self.animacja = None
+        self.stany = {o["id"]: {"postep": 1.0, "faza": "spoczynek",
+                                "blokada": False}
+                      for o in self.d["obiekty"]}
+
+        self.title(f"{self.d.get('nazwa', NAZWA)} — {self.d.get('podtytul', PODTYTUL)}")
+        self.geometry("1360x860")
+        self.minsize(980, 620)
+        self.configure(bg=B["tlo"])
+        ik = zasob("ikona.ico")
+        if ik and sys.platform == "win32":
+            try:
+                self.iconbitmap(ik)
+            except tk.TclError:
+                pass
+
+        self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
+        self.ekran_pin.pack(fill="both", expand=True)
+
+    # ---------------- logowanie ----------------
+
+    def _pin_ok(self, pin):
+        return zakoduj_pin(pin) == self.d.get("pin")
+
+    def _zalogowano(self):
+        self.ekran_pin.destroy()
+        self._buduj()
+        self._petla()
+        self._sprawdz_aktualizacje()
+
+    def zablokuj(self):
+        for w in self.winfo_children():
+            w.destroy()
+        self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
+        self.ekran_pin.pack(fill="both", expand=True)
+
+    # ---------------- budowa okna ----------------
+
+    def _buduj(self):
+        self.gora = tk.Frame(self, bg=B["tlo2"], height=58)
+        self.gora.pack(fill="x")
+        self.gora.pack_propagate(False)
+
+        marka = tk.Frame(self.gora, bg=B["tlo2"])
+        marka.pack(side="left", padx=(14, 0))
+        plik = zasob("logo-awf.png" if B["welon"] else "godlo-awf.png")
+        if plik:
+            obraz = Image.open(plik).convert("RGBA")
+            if B["welon"]:
+                h = 28
+                obraz = obraz.resize((int(obraz.width * h / obraz.height), h),
+                                     Image.LANCZOS)
+            else:
+                obraz = obraz.resize((36, 36), Image.LANCZOS)
+            self._znak = ImageTk.PhotoImage(obraz)
+            tk.Label(marka, image=self._znak, bg=B["tlo2"]).pack(side="left")
+
+        podpis = tk.Frame(marka, bg=B["tlo2"])
+        podpis.pack(side="left", padx=(11, 0))
+        tk.Label(podpis, text=self.d.get("nazwa", NAZWA), bg=B["tlo2"],
+                 fg=B["tekst"], font=("Segoe UI Semibold", 12),
+                 anchor="w").pack(anchor="w")
+        tk.Label(podpis, text=self.d.get("podtytul", PODTYTUL), bg=B["tlo2"],
+                 fg=B["przygasz"], font=("Segoe UI", 8),
+                 anchor="w").pack(anchor="w")
+
+        self.wyb_obiekt = ttk.Combobox(
+            self.gora, state="readonly", width=34,
+            values=[f'{o["nazwa"]} — {o["miejsce"]}' for o in self.d["obiekty"]])
+        self.wyb_obiekt.current(0)
+        self.wyb_obiekt.pack(side="left", padx=14)
+        self.wyb_obiekt.bind("<<ComboboxSelected>>", self._zmien_obiekt)
+
+        self.zakl = {}
+        pas = tk.Frame(self.gora, bg=B["tlo2"])
+        pas.pack(side="left", padx=8)
+        for klucz, tekst in self.ZAKLADKI:
+            e = tk.Label(pas, text=tekst, bg=B["tlo2"], fg=B["tekst2"],
+                         font=("Segoe UI Semibold", 9), padx=11, pady=8,
+                         cursor="hand2")
+            e.pack(side="left", padx=1)
+            e.bind("<Button-1>", lambda _e, k=klucz: self.przelacz(k))
+            self.zakl[klucz] = e
+
+        narz = tk.Frame(self.gora, bg=B["tlo2"])
+        narz.pack(side="right", padx=(0, 14))
+        for tekst, akcja in (("Tryb jasny", self.przelacz_motyw),
+                             ("Pełny ekran", self.pelny_ekran),
+                             ("Zablokuj", self.zablokuj)):
+            b = tk.Label(narz, text=tekst, bg=B["tlo3"], fg=B["tekst2"],
+                         font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2")
+            b.pack(side="left", padx=3)
+            b.bind("<Button-1>", lambda _e, a=akcja: a())
+            if tekst == "Tryb jasny":
+                self.b_motyw = b
+
+        self.lbl_wer_gora = tk.Label(
+            self.gora, text="v" + VER, bg=B["tlo2"], fg=B["zloto"],
+            font=("Segoe UI Semibold", 9), padx=8)
+        self.lbl_wer_gora.pack(side="right")
+
+        self.tresc = tk.Frame(self, bg=B["tlo"])
+        self.tresc.pack(fill="both", expand=True)
+
+        self.widoki = {}
+        self.scena = Scena(self.tresc)
+        self.scena.material = self.scena.wczytaj_material()
+        self.scena.on_przycisk = self.przycisk_sceny
+        self.widoki["podglad"] = self.scena
+        for klucz in ("kierowcy", "sterownik", "historia", "ustawienia"):
+            self.widoki[klucz] = tk.Frame(self.tresc, bg=B["tlo"])
+
+        self._buduj_kierowcow()
+        self._buduj_sterownik()
+        self._buduj_historie()
+        self._buduj_ustawienia()
+
+        stopka = tk.Frame(self, bg=B["tlo2"], height=28)
+        stopka.pack(fill="x")
+        stopka.pack_propagate(False)
+        tk.Label(stopka, text="Marymoncka 34, 00-968 Warszawa  ·  22 834 04 31"
+                              "  ·  straz@awf.edu.pl", bg=B["tlo2"],
+                 fg=B["przygasz"], font=("Segoe UI", 8)).pack(side="left", padx=14)
+        self.lbl_wersja = tk.Label(
+            stopka, text=f"{self.d.get('nazwa', NAZWA)} {VER}  ·  Straż Akademicka",
+            bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 8))
+        self.lbl_wersja.pack(side="right", padx=14)
+
+        self.przelacz("podglad")
+        self._zmien_obiekt()
+
+    def przelacz(self, klucz):
+        for w in self.widoki.values():
+            w.pack_forget()
+        self.widoki[klucz].pack(fill="both", expand=True)
+        for k, e in self.zakl.items():
+            e.configure(bg=B["tlo3"] if k == klucz else B["tlo2"],
+                        fg=B["tekst"] if k == klucz else B["tekst2"])
+        if klucz == "podglad":
+            self.after(30, self.scena.rysuj)
+        elif klucz == "kierowcy":
+            self.odswiez_kierowcow()
+        elif klucz == "historia":
+            self.odswiez_historie()
+
+    # ---------------- zakladki ----------------
+
+    def _naglowek(self, rodzic, tytul, podtytul):
+        r = tk.Frame(rodzic, bg=B["tlo"])
+        r.pack(fill="x", padx=24, pady=(20, 14))
+        tk.Label(r, text=tytul, bg=B["tlo"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 15)).pack(anchor="w")
+        tk.Label(r, text=podtytul, bg=B["tlo"], fg=B["przygasz"],
+                 font=("Segoe UI", 9)).pack(anchor="w")
+
+    def _tabela(self, rodzic, kolumny, szerokosci):
+        ram = tk.Frame(rodzic, bg=B["tlo"])
+        ram.pack(fill="both", expand=True, padx=24, pady=(0, 10))
+        styl = ttk.Style()
+        styl.theme_use("clam")
+        styl.configure("AWF.Treeview", background=B["tlo2"],
+                       fieldbackground=B["tlo2"], foreground=B["tekst"],
+                       rowheight=30, borderwidth=0,
+                       font=("Segoe UI", 10))
+        styl.configure("AWF.Treeview.Heading", background=B["tlo3"],
+                       foreground=B["przygasz"], relief="flat",
+                       font=("Segoe UI Semibold", 8))
+        styl.map("AWF.Treeview", background=[("selected", B["akcent2"])],
+                 foreground=[("selected", "#ffffff")])
+        t = ttk.Treeview(ram, columns=kolumny, show="headings",
+                         style="AWF.Treeview")
+        for k, sz in zip(kolumny, szerokosci):
+            t.heading(k, text=k.upper())
+            t.column(k, width=sz, anchor="w")
+        pion = ttk.Scrollbar(ram, orient="vertical", command=t.yview)
+        t.configure(yscrollcommand=pion.set)
+        t.pack(side="left", fill="both", expand=True)
+        pion.pack(side="right", fill="y")
+        t.tag_configure("ok", foreground=B["ok"])
+        t.tag_configure("uwaga", foreground=B["uwaga"])
+        t.tag_configure("alarm", foreground=B["alarm"])
+        return t
+
+    def _przyciski(self, rodzic, pozycje):
+        r = tk.Frame(rodzic, bg=B["tlo"])
+        r.pack(fill="x", padx=24, pady=(0, 18))
+        for tekst, akcja, glowny in pozycje:
+            tk.Button(r, text=tekst, command=akcja, relief="flat", bd=0,
+                      cursor="hand2", font=("Segoe UI", 10), padx=16, pady=8,
+                      bg=B["akcent"] if glowny else B["tlo3"],
+                      fg=B["naAkcencie"] if glowny else B["tekst"],
+                      activebackground=B["zloto"] if glowny else B["linia"]
+                      ).pack(side="left", padx=(0, 8))
+
+    def _buduj_kierowcow(self):
+        w = self.widoki["kierowcy"]
+        self._naglowek(w, "Kierowcy uprawnieni",
+                       "Stan liczy się na bieżąco z harmonogramu i daty ważności")
+        self.tab_kier = self._tabela(
+            w, ("kierowca", "rola", "telefon", "harmonogram", "ważny do",
+                "wjazdów", "stan"),
+            (200, 150, 140, 190, 100, 80, 110))
+        self.tab_kier.bind("<<TreeviewSelect>>", self._wybor_kierowcy)
+        self._przyciski(w, [("Dodaj", lambda: self.okno_kierowcy(None), True),
+                            ("Edytuj", lambda: self.okno_kierowcy(self.wybrany), False),
+                            ("Usuń", self.usun_kierowce, False)])
+
+    def odswiez_kierowcow(self):
+        for i in self.tab_kier.get_children():
+            self.tab_kier.delete(i)
+        for i, k in enumerate(self.d["kierowcy"]):
+            ok, powod = sprawdz_dostep(k)
+            if not k.get("aktywny", True):
+                stan, tag = "ZABLOKOWANY", "alarm"
+            elif ok:
+                stan, tag = "wpuszcza", "ok"
+            else:
+                stan, tag = powod, "uwaga"
+            self.tab_kier.insert(
+                "", "end", iid=str(i),
+                values=(k["imie"], k.get("rola", ""), k["tel"],
+                        opis_harmonogramu(k), k.get("wazny") or "—",
+                        k.get("ile", 0), stan), tags=(tag,))
+
+    def _wybor_kierowcy(self, _=None):
+        sel = self.tab_kier.selection()
+        if sel:
+            self.wybrany = int(sel[0])
+
+    def _buduj_sterownik(self):
+        w = self.widoki["sterownik"]
+        self._naglowek(w, "Moduł przy bramie", "ESP32 z modemem LTE")
+        karty = tk.Frame(w, bg=B["tlo"])
+        karty.pack(fill="x", padx=24, pady=(0, 16))
+        self.karty_ster = {}
+        for etykieta in ("Łączność", "Sygnał", "Sieć", "Czas pracy", "Zasilanie"):
+            k = tk.Frame(karty, bg=B["tlo2"], highlightthickness=1,
+                         highlightbackground=B["linia"])
+            k.pack(side="left", fill="x", expand=True, padx=(0, 8))
+            tk.Label(k, text=etykieta.upper(), bg=B["tlo2"], fg=B["przygasz"],
+                     font=("Segoe UI", 8), anchor="w").pack(anchor="w", padx=14,
+                                                            pady=(12, 0))
+            v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcent"],
+                         font=("Segoe UI Semibold", 13), anchor="w")
+            v.pack(anchor="w", padx=14, pady=(2, 12))
+            self.karty_ster[etykieta] = v
+        for e, t in (("Łączność", "połączony"), ("Sygnał", "77%"),
+                     ("Sieć", "LTE · Play"), ("Czas pracy", "14 d 6 h"),
+                     ("Zasilanie", "12.3 V")):
+            self.karty_ster[e].configure(text=t)
+
+        tk.Label(w, text="DZIENNIK", bg=B["tlo"], fg=B["przygasz"],
+                 font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=24)
+        self.dziennik = tk.Text(w, height=14, bg="#050d09" if not B["welon"]
+                                else "#f7faf8", fg=B["tekst2"], relief="flat",
+                                font=("Consolas", 9), padx=12, pady=8)
+        self.dziennik.pack(fill="both", expand=True, padx=24, pady=(4, 16))
+        self.dziennik.configure(state="disabled")
+
+    def _buduj_historie(self):
+        w = self.widoki["historia"]
+        self._naglowek(w, "Historia wjazdów", "Zapisywana w programie i w module")
+        self.tab_hist = self._tabela(
+            w, ("data", "godzina", "kierowca", "telefon", "obiekt", "sposób"),
+            (110, 90, 210, 150, 220, 240))
+        self._przyciski(w, [("Raport do wydruku", self.raport, True),
+                            ("Wyczyść starsze niż rok", self.czysc_historie, False)])
+
+    def odswiez_historie(self):
+        for i in self.tab_hist.get_children():
+            self.tab_hist.delete(i)
+        for w in reversed(self.d.get("historia", [])[-300:]):
+            tag = ("alarm" if w.get("sposob", "").startswith("ODMOWA")
+                   else ("uwaga" if "ręczne" in w.get("sposob", "") else ""))
+            self.tab_hist.insert("", "end", values=(
+                w.get("data", ""), w.get("godzina", ""), w.get("imie", ""),
+                w.get("tel", ""), w.get("obiekt", ""), w.get("sposob", "")),
+                tags=(tag,) if tag else ())
+
+    def _buduj_ustawienia(self):
+        w = self.widoki["ustawienia"]
+        self._naglowek(w, "Ustawienia", "Zmiany zapisują się od razu")
+        r = tk.Frame(w, bg=B["tlo2"], highlightthickness=1,
+                     highlightbackground=B["linia"])
+        r.pack(fill="x", padx=24, pady=(0, 16))
+        siatka = tk.Frame(r, bg=B["tlo2"], padx=18, pady=16)
+        siatka.pack(fill="x")
+
+        tk.Label(siatka, text="NAZWA SYSTEMU", bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI Semibold", 8)).grid(row=0, column=0,
+                                                     sticky="w", pady=(0, 6))
+        self.pole_nazwa = tk.Entry(siatka, bg=B["tlo3"], fg=B["tekst"],
+                                   relief="flat", font=("Segoe UI", 10),
+                                   insertbackground=B["tekst"], width=28)
+        self.pole_nazwa.insert(0, self.d.get("nazwa", NAZWA))
+        self.pole_nazwa.grid(row=1, column=0, sticky="w", ipady=5, padx=(0, 10))
+        self.pole_podtytul = tk.Entry(siatka, bg=B["tlo3"], fg=B["tekst"],
+                                      relief="flat", font=("Segoe UI", 10),
+                                      insertbackground=B["tekst"], width=34)
+        self.pole_podtytul.insert(0, self.d.get("podtytul", PODTYTUL))
+        self.pole_podtytul.grid(row=1, column=1, sticky="w", ipady=5, padx=(0, 10))
+        tk.Button(siatka, text="Zastosuj", command=self.zmien_nazwe,
+                  relief="flat", bd=0, cursor="hand2", bg=B["akcent"],
+                  fg=B["naAkcencie"], font=("Segoe UI", 10), padx=16, pady=6
+                  ).grid(row=1, column=2, sticky="w")
+
+        self._przyciski(w, [("Zmień PIN", self.zmien_pin, False),
+                            ("Sprawdź aktualizacje", self.sprawdz_recznie, True)])
+        self.lbl_akt = tk.Label(
+            w, text=f"Wersja programu: {VER}  ·  jeszcze nie sprawdzano",
+            bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 10))
+        self.lbl_akt.pack(anchor="w", padx=24)
+        tk.Label(w, text="Program sprawdza aktualizacje sam, przy każdym "
+                         "uruchomieniu, zaraz po zalogowaniu.",
+                 bg=B["tlo"], fg=B["przygasz"],
+                 font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(4, 0))
+
+    # ---------------- dzialanie ----------------
+
+    def log(self, tekst):
+        if not hasattr(self, "dziennik"):
+            return
+        self.dziennik.configure(state="normal")
+        self.dziennik.insert("1.0", datetime.now().strftime("%H:%M:%S  ")
+                             + tekst + "\n")
+        self.dziennik.configure(state="disabled")
+
+    def _zmien_obiekt(self, _=None):
+        stary = self.d["obiekty"][self.obiekt]["id"]
+        self.stany[stary] = {"postep": self.scena.postep,
+                             "faza": self.scena.faza,
+                             "blokada": self.scena.zablokowana}
+        self.obiekt = self.wyb_obiekt.current() if hasattr(self, "wyb_obiekt") else 0
+        o = self.d["obiekty"][self.obiekt]
+        s = self.stany[o["id"]]
+        self.scena.typ = o["typ"]
+        self.scena.nazwa_obiektu = f'{o["nazwa"]} — {o["miejsce"]}'
+        self.scena.postep = s["postep"]
+        self.scena.faza = s["faza"]
+        self.scena.zablokowana = s["blokada"]
+        self.scena.dzis = sum(
+            1 for w in self.d.get("historia", [])
+            if w.get("obiekt") == o["nazwa"]
+            and w.get("data") == datetime.now().strftime("%d.%m.%Y"))
+        self.scena._kiosk = None
+        self.log(f'obiekt: {o["nazwa"]} — {o["miejsce"]}')
+        self.scena.rysuj()
+
+    def przycisk_sceny(self, nr):
+        if nr == 0:
+            self.wpusc()
+        elif nr == 1:
+            self.recznie(True)
+        elif nr == 2:
+            self.recznie(False)
+        else:
+            self.blokada()
+
+    def _ruch(self, cel, potem=None):
+        if self.animacja:
+            self.after_cancel(self.animacja)
+        start = self.scena.postep
+        czas = 1900 if cel < start else 2000
+        t0 = datetime.now()
+
+        def krok():
+            u = min(1.0, (datetime.now() - t0).total_seconds() * 1000 / czas)
+            g = u * u * (3 - 2 * u)
+            self.scena.postep = start + (cel - start) * g
+            self.scena.rysuj()
+            if u < 1:
+                self.animacja = self.after(24, krok)
+            else:
+                self.animacja = None
+                if potem:
+                    potem()
+        krok()
+
+    def wpusc(self):
+        if self.scena.zablokowana:
+            self.log("połączenie odrzucone — blokada")
+            return
+        k = self.d["kierowcy"][self.wybrany] if self.d["kierowcy"] else None
+        if not k:
+            return
+        ok, powod = sprawdz_dostep(k)
+        self.scena.kto, self.scena.tel = k["imie"], k["tel"]
+        self.scena.powod = "" if ok else powod
+        self.scena.faza = "dzwoni"
+        self.scena.rysuj()
+        self.log(f'połączenie: {k["imie"]} {k["tel"]}')
+
+        def dalej():
+            if not ok:
+                self.scena.faza = "odmowa"
+                self.scena.rysuj()
+                self.log("ODMOWA — " + powod)
+                self.zapisz_wjazd(k, "ODMOWA — " + powod)
+                self.after(2600, self.wroc)
+                return
+            o = self.d["obiekty"][self.obiekt]
+            self.scena.faza = "otwieranie"
+            self.log(f'numer rozpoznany — impuls {o["impuls"]} ms')
+            self.zapisz_wjazd(k, "przejazd")
+            self._ruch(0.0, self.po_otwarciu)
+        self.after(900, dalej)
+
+    def po_otwarciu(self):
+        self.scena.faza = "otwarty"
+        self.scena.rysuj()
+        o = self.d["obiekty"][self.obiekt]
+        if not o.get("auto", True):
+            self.scena.faza = "otwarty_staly"
+            self.scena.rysuj()
+            return
+
+        def zamknij():
+            self.scena.faza = "zamykanie"
+            self.log("autozamykanie")
+            self._ruch(1.0, self.wroc)
+        self.after(max(1000, int(o.get("czas", 8) * 300)), zamknij)
+
+    def wroc(self):
+        self.scena.faza = "spoczynek"
+        self.scena.kto = self.scena.tel = self.scena.powod = ""
+        self.scena.rysuj()
+
+    def recznie(self, otwierac):
+        if self.scena.zablokowana:
+            self.log("odrzucono — zapora zablokowana")
+            return
+        self.scena.faza = "otwieranie" if otwierac else "zamykanie"
+        self.log("ręcznie: " + ("otwarcie na stałe" if otwierac else "zamknięcie"))
+        self.zapisz_wjazd(None, "ręczne " + ("otwarcie" if otwierac else "zamknięcie"))
+        self._ruch(0.0 if otwierac else 1.0,
+                   lambda: self._po_recznym(otwierac))
+
+    def _po_recznym(self, otwierac):
+        self.scena.faza = "otwarty_staly" if otwierac else "spoczynek"
+        self.scena.rysuj()
+
+    def blokada(self):
+        self.scena.zablokowana = not self.scena.zablokowana
+        if self.scena.zablokowana:
+            self.log("BLOKADA — połączenia ignorowane")
+            if self.scena.postep < 1:
+                self.scena.faza = "zamykanie"
+                self._ruch(1.0, lambda: self._ustaw_faze("blokada"))
+            else:
+                self._ustaw_faze("blokada")
+        else:
+            self.log("blokada zdjęta")
+            self._ustaw_faze("spoczynek")
+
+    def _ustaw_faze(self, faza):
+        self.scena.faza = faza
+        self.scena.rysuj()
+
+    def zapisz_wjazd(self, k, sposob):
+        o = self.d["obiekty"][self.obiekt]
+        teraz = datetime.now()
+        self.d.setdefault("historia", []).append({
+            "data": teraz.strftime("%d.%m.%Y"),
+            "godzina": teraz.strftime("%H:%M"),
+            "imie": k["imie"] if k else "Obsługa",
+            "tel": k["tel"] if k else "—",
+            "obiekt": o["nazwa"] + " — " + o["miejsce"],
+            "sposob": sposob})
+        if k and not sposob.startswith("ODMOWA"):
+            k["ile"] = k.get("ile", 0) + 1
+        self.d["historia"] = self.d["historia"][-5000:]
+        zapisz(self.d)
+        self.scena.dzis = sum(
+            1 for w in self.d["historia"]
+            if w.get("obiekt", "").startswith(o["nazwa"])
+            and w.get("data") == teraz.strftime("%d.%m.%Y"))
+
+    def _petla(self):
+        if self.widoki["podglad"].winfo_ismapped():
+            self.scena.rysuj()
+        self.after(1000, self._petla)
+
+    # ---------------- narzedzia ----------------
+
+    def przelacz_motyw(self):
+        jasny = self.d.get("motyw") != "jasny"
+        self.d["motyw"] = "jasny" if jasny else "ciemny"
+        zapisz(self.d)
+        zastosuj_motyw(jasny)
+        stan = {o["id"]: dict(s) for o, s in
+                zip(self.d["obiekty"], self.stany.values())}
+        for w in self.winfo_children():
+            w.destroy()
+        self.configure(bg=B["tlo"])
+        self._buduj()
+        self.stany.update(stan)
+        self.b_motyw.configure(text="Tryb ciemny" if jasny else "Tryb jasny")
+
+    def pelny_ekran(self):
+        self.attributes("-fullscreen", not self.attributes("-fullscreen"))
+        self.after(200, self.scena.rysuj)
+
+    def zmien_nazwe(self):
+        self.d["nazwa"] = self.pole_nazwa.get().strip() or NAZWA
+        self.d["podtytul"] = self.pole_podtytul.get().strip()
+        zapisz(self.d)
+        self.title(f'{self.d["nazwa"]} — {self.d["podtytul"]}')
+        self.lbl_wersja.configure(
+            text=f'{self.d["nazwa"]} {VER}  ·  Straż Akademicka')
+        self.log("nazwa systemu: " + self.d["nazwa"])
+
+    def zmien_pin(self):
+        from tkinter import simpledialog
+        nowy = simpledialog.askstring("Zmiana PIN-u", "Nowy PIN (4–8 cyfr):",
+                                      parent=self, show="●")
+        if not nowy:
+            return
+        if not nowy.isdigit() or not 4 <= len(nowy) <= 8:
+            messagebox.showwarning("PIN", "PIN musi mieć od 4 do 8 cyfr.",
+                                   parent=self)
+            return
+        self.d["pin"] = zakoduj_pin(nowy)
+        zapisz(self.d)
+        messagebox.showinfo("PIN", "PIN zmieniony.", parent=self)
+        self.log("zmieniono PIN")
+
+    def okno_kierowcy(self, idx):
+        messagebox.showinfo("W przygotowaniu",
+                            "Okno dodawania i edycji kierowcy dokładam "
+                            "w następnej wersji.", parent=self)
+
+    def usun_kierowce(self):
+        if not self.d["kierowcy"]:
+            return
+        k = self.d["kierowcy"][self.wybrany]
+        if messagebox.askyesno("Usuwanie",
+                               f'Usunąć numer: {k["imie"]}?', parent=self):
+            self.d["kierowcy"].pop(self.wybrany)
+            self.wybrany = max(0, self.wybrany - 1)
+            zapisz(self.d)
+            self.odswiez_kierowcow()
+            self.log("usunięto numer: " + k["imie"])
+
+    def raport(self):
+        messagebox.showinfo("W przygotowaniu",
+                            "Raport do wydruku dokładam w następnej wersji.",
+                            parent=self)
+
+    def czysc_historie(self):
+        granica = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+
+        def klucz(w):
+            try:
+                d, m, r = w.get("data", "01.01.1970").split(".")
+                return r + m + d
+            except ValueError:
+                return "99999999"
+        przed = len(self.d.get("historia", []))
+        self.d["historia"] = [w for w in self.d.get("historia", [])
+                              if klucz(w) >= granica]
+        zapisz(self.d)
+        self.odswiez_historie()
+        self.log(f"usunięto {przed - len(self.d['historia'])} starych wpisów")
+
+    # ---------------- aktualizacje ----------------
+
+    def _sprawdz_aktualizacje(self):
+        """Sprawdzenie przy starcie — po cichu. Gdy nie ma nowszej wersji
+        albo nie ma internetu, nic sie nie dzieje."""
+        try:
+            import aktualizacje
+        except ImportError:
+            return
+        import queue
+        import threading
+        self._kolejka_start = queue.Queue()
+
+        def robota():
+            self._kolejka_start.put(aktualizacje.stan_serwera(VER))
+
+        threading.Thread(target=robota, daemon=True).start()
+        self._odbierz_start()
+
+    def _odbierz_start(self):
+        import queue
+        try:
+            rodzaj, dane = self._kolejka_start.get_nowait()
+        except queue.Empty:
+            self.after(200, self._odbierz_start)
+            return
+        if rodzaj == "jest":
+            self._jest_aktualizacja(dane)
+        elif rodzaj == "aktualna":
+            self.log(f"wersja {VER} — najnowsza")
+        else:
+            self.log("nie sprawdzono aktualizacji: " + str(dane))
+
+    def _jest_aktualizacja(self, info):
+        self.log(f'dostępna wersja {info["wersja"]}')
+        try:
+            from okno_aktualizacji import okno_aktualizacji
+            okno_aktualizacji(self, info)
+        except ImportError:
+            messagebox.showinfo(
+                "Aktualizacja",
+                f'Dostępna wersja {info["wersja"]}\n\n{info.get("opis","")}',
+                parent=self)
+
+    def sprawdz_recznie(self):
+        try:
+            import aktualizacje
+        except ImportError:
+            messagebox.showinfo("Aktualizacje",
+                                "Brak modułu aktualizacji w katalogu programu.",
+                                parent=self)
+            return
+        self.lbl_akt.configure(text="Sprawdzanie...", fg=B["przygasz"])
+        self.log("sprawdzam aktualizacje na GitHubie")
+        self.update_idletasks()
+
+        # Watek roboczy nie dotyka okien — wklada wynik do kolejki,
+        # a watek glowny co 150 ms zaglada, czy cos przyszlo.
+        import queue
+        import threading
+        self._kolejka_akt = queue.Queue()
+
+        def robota():
+            self._kolejka_akt.put(aktualizacje.stan_serwera(VER))
+
+        threading.Thread(target=robota, daemon=True).start()
+        self._odbierz_sprawdzenie()
+
+    def _odbierz_sprawdzenie(self):
+        import queue
+        try:
+            rodzaj, dane = self._kolejka_akt.get_nowait()
+        except queue.Empty:
+            self.after(150, self._odbierz_sprawdzenie)
+            return
+        self._wynik_sprawdzenia(rodzaj, dane)
+
+    def _wynik_sprawdzenia(self, rodzaj, dane):
+        czas = datetime.now().strftime("%H:%M")
+        if rodzaj == "jest":
+            self.lbl_akt.configure(
+                text=f"Masz {VER}, dostępna {dane['wersja']}", fg=B["uwaga"])
+            self.log(f"dostępna wersja {dane['wersja']}")
+            self._jest_aktualizacja(dane)
+        elif rodzaj == "aktualna":
+            self.lbl_akt.configure(
+                text=f"Wersja {VER} — najnowsza  ·  sprawdzono {czas}",
+                fg=B["ok"])
+            self.log(f"masz najnowszą wersję ({dane})")
+        else:
+            self.lbl_akt.configure(
+                text=f"Nie sprawdzono: {dane}  ·  {czas}", fg=B["alarm"])
+            self.log("sprawdzanie nieudane: " + str(dane))
+
+
+if __name__ == "__main__":
+    App().mainloop()
