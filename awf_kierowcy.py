@@ -185,6 +185,12 @@ def domyslna_baza():
         "pin": zakoduj_pin("1234"),
         "motyw": "ciemny",
         "start_pelny": False,
+        "admin_haslo": "",
+        "admin_email": "",
+        "smtp_serwer": "",
+        "smtp_port": 587,
+        "smtp_login": "",
+        "smtp_haslo": "",
         "nazwa": NAZWA,
         "podtytul": PODTYTUL,
         "obiekty": [
@@ -256,6 +262,70 @@ def zapisz(d):
 # ==========================================================================
 # uprawnienia
 # ==========================================================================
+
+# ==========================================================================
+# odzyskiwanie dostepu — haslo administratora i kod wysylany na e-mail
+# ==========================================================================
+
+SOL_ADMIN = "awf-kierowcy-admin-2026"
+
+
+def zakoduj_haslo(haslo):
+    return hashlib.sha256((SOL_ADMIN + str(haslo)).encode()).hexdigest()
+
+
+def losowy_kod(dlugosc=6):
+    """Kod jednorazowy z generatora kryptograficznego — nie ze zwyklego
+    losowania, bo tamto da sie przewidziec."""
+    import secrets
+    return "".join(secrets.choice("0123456789") for _ in range(dlugosc))
+
+
+def wyslij_kod(ustawienia, kod, adres):
+    """Wysyla kod na wskazany adres. Zwraca (czy_sie_udalo, opis).
+
+    Uzywa konta pocztowego podanego w ustawieniach. Bez niego nie ma
+    jak wyslac — program nie ma wlasnego serwera poczty.
+    """
+    serwer = (ustawienia.get("smtp_serwer") or "").strip()
+    login = (ustawienia.get("smtp_login") or "").strip()
+    haslo = ustawienia.get("smtp_haslo") or ""
+    if not (serwer and login and haslo and adres):
+        return False, "Brak ustawień poczty"
+
+    import smtplib
+    import ssl
+    from email.message import EmailMessage
+
+    wiadomosc = EmailMessage()
+    wiadomosc["Subject"] = "AWF KIEROWCY — kod odzyskiwania dostępu"
+    wiadomosc["From"] = login
+    wiadomosc["To"] = adres
+    wiadomosc.set_content(
+        "Kod jednorazowy do odblokowania programu AWF KIEROWCY:\n\n"
+        f"        {kod}\n\n"
+        "Kod jest ważny 15 minut i można go użyć tylko raz.\n\n"
+        "Jeśli nie prosiłeś o odblokowanie — ktoś próbuje dostać się\n"
+        "do programu na komputerze dyżurki. Sprawdź to.\n")
+
+    port = int(ustawienia.get("smtp_port") or 587)
+    try:
+        if port == 465:
+            with smtplib.SMTP_SSL(serwer, port, timeout=15,
+                                  context=ssl.create_default_context()) as p:
+                p.login(login, haslo)
+                p.send_message(wiadomosc)
+        else:
+            with smtplib.SMTP(serwer, port, timeout=15) as p:
+                p.starttls(context=ssl.create_default_context())
+                p.login(login, haslo)
+                p.send_message(wiadomosc)
+        return True, "Kod wysłany"
+    except smtplib.SMTPAuthenticationError:
+        return False, "Serwer odrzucił login lub hasło"
+    except (smtplib.SMTPException, OSError) as e:
+        return False, f"Nie udało się wysłać: {e}"
+
 
 def sprawdz_dostep(k, teraz=None):
     """Czy kierowca moze teraz wjechac. Zwraca (tak/nie, powod)."""
@@ -752,6 +822,58 @@ class EkranPin(tk.Canvas):
             self.delete("all")
         except tk.TclError:
             return
+        try:
+            self._rysuj_pelny()
+        except Exception as blad:
+            # Skladanie obrazu wymaga biblioteki graficznej i pliku tla.
+            # Gdyby czegos zabraklo, logowanie musi dzialac mimo to.
+            print("ekran logowania — wariant zapasowy:", blad)
+            self._rysuj_prosty()
+
+    def _rysuj_prosty(self):
+        """Klawiatura bez skladanego obrazu — na wypadek, gdyby tamten
+        wariant nie zadzialal na jakims komputerze."""
+        self.delete("all")
+        W = max(self.winfo_width(), 700)
+        H = max(self.winfo_height(), 480)
+        self.configure(bg=B["tlo"])
+        self.create_text(W // 2, H // 2 - 210, text=NAZWA, fill=B["tekst"],
+                         font=("Segoe UI Semibold", 17))
+        self.create_text(W // 2, H // 2 - 185, text=PODTYTUL,
+                         fill=B["przygasz"], font=("Segoe UI", 10))
+        ile = len(self.wpisany)
+        for i in range(max(4, ile)):
+            x = W // 2 - (max(4, ile) - 1) * 11 + i * 22
+            self.create_oval(x - 7, H // 2 - 158, x + 7, H // 2 - 144,
+                             fill=B["akcent"] if i < ile else "",
+                             outline=B["akcent"] if i < ile else B["przygasz"],
+                             width=2)
+        self.create_text(W // 2, H // 2 - 122, text=self.info, fill=B["alarm"],
+                         font=("Segoe UI", 9))
+        self.pola = []
+        szer, wys, odstep = 120, 66, 10
+        x0 = W // 2 - (szer * 3 + odstep * 2) // 2
+        y0 = H // 2 - 100
+        for i, znak in enumerate(self.KLAWISZE):
+            x = x0 + (i % 3) * (szer + odstep)
+            y = y0 + (i // 3) * (wys + odstep)
+            barwa = B["akcent"] if znak == "OK" else B["tlo3"]
+            self.create_rectangle(x, y, x + szer, y + wys, fill=barwa,
+                                  outline=B["linia"])
+            self.create_text(x + szer // 2, y + wys // 2, text=znak,
+                             fill=B["naAkcencie"] if znak == "OK" else (
+                                 B["alarm"] if znak == "C" else B["tekst"]),
+                             font=("Segoe UI Semibold", 22))
+            self.pola.append((x, y, x + szer, y + wys, znak, i))
+        y = y0 + 4 * (wys + odstep) + 14
+        self.create_text(W // 2, y, text="PIN fabryczny 1234",
+                         fill=B["przygasz"], font=("Segoe UI", 8))
+        self.create_text(W // 2, y + 22, text="Nie pamiętam PIN-u",
+                         fill=B["zloto"], font=("Segoe UI", 9, "underline"))
+        self.pola.append((W // 2 - 80, y + 12, W // 2 + 80, y + 32,
+                          "ZAPOMNIALEM", -1))
+
+    def _rysuj_pelny(self):
         W = max(self.winfo_width(), 700)
         H = max(self.winfo_height(), 480)
 
@@ -919,20 +1041,170 @@ class EkranPin(tk.Canvas):
             self.rysuj()
 
     def _zapomnialem(self):
-        okno_tresci(
-            self, "Nie pamiętam PIN-u",
-            [("Program można odblokować bez utraty danych.", "tekst"),
-             ("", "odstep"),
-             ("1", "Zamknij program"),
-             ("2", "Wklej w pasek adresu Eksploratora:"),
-             ("", "kod:%APPDATA%\\AWF-Kierowcy"),
-             ("3", "Otwórz plik baza.json w Notatniku"),
-             ("4", "Skasuj linię zaczynającą się od \"pin\""),
-             ("5", "Zapisz plik i uruchom program"),
-             ("", "odstep"),
-             ("PIN wróci do fabrycznego 1234. "
-              "Numery, harmonogramy i historia zostaną nienaruszone.",
-              "tekst")])
+        """Odzyskanie dostepu: haslem administratora albo kodem z poczty."""
+        d = self.master.d if hasattr(self.master, "d") else wczytaj()
+
+        if not d.get("admin_haslo") and not d.get("admin_email"):
+            okno_tresci(
+                self, "Odzyskiwanie dostępu nie jest ustawione",
+                [("Nikt nie ustawił hasła administratora ani adresu e-mail, "
+                  "więc program nie ma jak potwierdzić, kto prosi o dostęp.",
+                  "tekst"),
+                 ("", "odstep"),
+                 ("Zaloguj się PIN-em i wejdź w Ustawienia → "
+                  "Odzyskiwanie dostępu, żeby to ustawić.", "tekst"),
+                 ("", "odstep"),
+                 ("Jeśli nikt nie zna PIN-u, dostęp do pliku z bazą ma tylko "
+                  "administrator komputera — proszę zwrócić się do działu "
+                  "informatycznego.", "tekst")])
+            return
+
+        w = tk.Toplevel(self)
+        w.title("Odzyskiwanie dostępu")
+        w.configure(bg=B["tlo2"])
+        w.resizable(False, False)
+        w.transient(self.winfo_toplevel())
+        w.grab_set()
+        tk.Frame(w, bg=B["akcent"], height=4).pack(fill="x")
+        r = tk.Frame(w, bg=B["tlo2"], padx=30, pady=24)
+        r.pack(fill="both", expand=True)
+
+        tk.Label(r, text="Odzyskiwanie dostępu", bg=B["tlo2"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 15)).pack(anchor="w")
+        tk.Label(r, text="Dostęp może przywrócić tylko administrator.",
+                 bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(3, 16))
+
+        stan = {"kod": None, "czas": None}
+
+        def etykieta(t):
+            tk.Label(r, text=t, bg=B["tlo2"], fg=B["przygasz"],
+                     font=("Segoe UI", 9), anchor="w").pack(anchor="w",
+                                                            pady=(10, 3))
+
+        def pole(ukryj=False):
+            e = tk.Entry(r, bg=B["tlo3"], fg=B["tekst"], relief="flat",
+                         font=("Segoe UI", 12), insertbackground=B["tekst"],
+                         show="●" if ukryj else "")
+            e.pack(fill="x", ipady=7)
+            return e
+
+        komunikat = tk.Label(r, text="", bg=B["tlo2"], fg=B["alarm"],
+                             font=("Segoe UI", 9), wraplength=420,
+                             justify="left")
+
+        # --- droga 1: haslo administratora ---
+        if d.get("admin_haslo"):
+            etykieta("Hasło administratora")
+            p_haslo = pole(ukryj=True)
+        else:
+            p_haslo = None
+
+        # --- droga 2: kod na e-mail ---
+        p_kod = None
+        if d.get("admin_email"):
+            adres = d["admin_email"]
+            zamaskowany = adres
+            if "@" in adres:
+                nazwa, reszta = adres.split("@", 1)
+                zamaskowany = (nazwa[:2] + "•" * max(1, len(nazwa) - 2)
+                               + "@" + reszta)
+            etykieta(f"Kod wysłany na {zamaskowany}")
+            ramka = tk.Frame(r, bg=B["tlo2"])
+            ramka.pack(fill="x")
+            p_kod = tk.Entry(ramka, bg=B["tlo3"], fg=B["tekst"], relief="flat",
+                             font=("Consolas", 14), insertbackground=B["tekst"],
+                             width=10)
+            p_kod.pack(side="left", ipady=7)
+
+            def wyslij():
+                stan["kod"] = losowy_kod()
+                stan["czas"] = datetime.now()
+                udalo, opis = wyslij_kod(d, stan["kod"], adres)
+                komunikat.configure(
+                    text=("Kod wysłany. Sprawdź skrzynkę — ważny 15 minut."
+                          if udalo else opis),
+                    fg=B["ok"] if udalo else B["alarm"])
+                if not udalo:
+                    stan["kod"] = None
+
+            tk.Button(ramka, text="Wyślij kod", command=wyslij, relief="flat",
+                      bd=0, cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                      font=("Segoe UI", 10), padx=16, pady=8
+                      ).pack(side="left", padx=(8, 0))
+
+        etykieta("Nowy PIN (4–8 cyfr)")
+        p_nowy = pole(ukryj=True)
+        komunikat.pack(anchor="w", pady=(12, 0))
+
+        def zatwierdz():
+            nowy = p_nowy.get().strip()
+            if not nowy.isdigit() or not 4 <= len(nowy) <= 8:
+                komunikat.configure(text="PIN musi mieć od 4 do 8 cyfr.",
+                                    fg=B["alarm"])
+                return
+
+            uprawniony = False
+            if p_haslo is not None and p_haslo.get():
+                if zakoduj_haslo(p_haslo.get()) == d.get("admin_haslo"):
+                    uprawniony = True
+                else:
+                    komunikat.configure(text="Błędne hasło administratora.",
+                                        fg=B["alarm"])
+                    return
+            elif p_kod is not None and p_kod.get().strip():
+                if not stan["kod"]:
+                    komunikat.configure(text="Najpierw wyślij kod.",
+                                        fg=B["alarm"])
+                    return
+                minelo = (datetime.now() - stan["czas"]).total_seconds()
+                if minelo > 900:
+                    stan["kod"] = None
+                    komunikat.configure(text="Kod stracił ważność. Wyślij nowy.",
+                                        fg=B["alarm"])
+                    return
+                if p_kod.get().strip() == stan["kod"]:
+                    uprawniony = True
+                    stan["kod"] = None          # kod jednorazowy
+                else:
+                    komunikat.configure(text="Błędny kod.", fg=B["alarm"])
+                    return
+            else:
+                komunikat.configure(
+                    text="Podaj hasło administratora albo kod z poczty.",
+                    fg=B["alarm"])
+                return
+
+            if uprawniony:
+                d["pin"] = zakoduj_pin(nowy)
+                zapisz(d)
+                w.destroy()
+                self.proby = 0
+                self.zablokowany = False
+                self.wpisany = ""
+                self.info = ""
+                self.rysuj()
+                okno_tresci(self, "PIN zmieniony",
+                            [("Nowy PIN działa od razu. Zaloguj się nim.",
+                              "tekst")])
+
+        guziki = tk.Frame(r, bg=B["tlo2"])
+        guziki.pack(fill="x", pady=(18, 0))
+        tk.Button(guziki, text="Ustaw nowy PIN", command=zatwierdz,
+                  relief="flat", bd=0, cursor="hand2", bg=B["akcent"],
+                  fg=B["naAkcencie"], font=("Segoe UI Semibold", 10),
+                  padx=20, pady=9).pack(side="right")
+        tk.Button(guziki, text="Anuluj", command=w.destroy, relief="flat",
+                  bd=0, cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                  font=("Segoe UI", 10), padx=18, pady=9
+                  ).pack(side="right", padx=(0, 8))
+
+        w.bind("<Escape>", lambda _e: w.destroy())
+        w.update_idletasks()
+        g = self.winfo_toplevel()
+        x = g.winfo_rootx() + (g.winfo_width() - w.winfo_width()) // 2
+        y = g.winfo_rooty() + 70
+        w.geometry(f"+{max(0, x)}+{max(0, y)}")
 
 
 # ==========================================================================
