@@ -34,26 +34,36 @@ DNI_PELNE = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek",
 # barwy — dwa komplety, jak w bloku :root i body.jasny we wzorcu
 # ==========================================================================
 
+# Obie palety wyprowadzone z dwoch barw uczelni: zielen #036744 i zloto
+# #b9975b. Tla to ta sama zielen zmieszana z czernia, napisy — z biela,
+# wiec caly program trzyma sie jednej rodziny barw.
+#
+# Zielen uczelni jest ciemna, dlatego sluzy jako WYPELNIENIE z bialym
+# napisem (kontrast 6,9). Jako napis na ciemnym tle bylaby nieczytelna
+# (2,6), wiec do tego jest osobny klucz "akcentTekst" — ta sama zielen
+# rozjasniona biela. Zloto odwrotnie: na ciemnym tle wlasne #b9975b,
+# na bialym przyciemnione, bo jasne zloto na bieli ma kontrast 2,8.
+
 CIEMNY = {
-    "tlo": "#071b13", "tlo2": "#0d2419", "tlo3": "#143024", "linia": "#1f4633",
-    "tekst": "#e9f2ec", "tekst2": "#a9c2b4", "przygasz": "#7d998a",
-    "akcent": "#00a86b", "akcent2": "#008a58",
-    "zloto": "#c9a86e", "zloto2": "#b9975b",
-    "ok": "#00a86b", "uwaga": "#c9a86e", "alarm": "#ff6b6b",
-    "naAkcencie": "#04220e", "naPanelu": "#eaf3ed",
-    "panel": (8, 20, 15, 194), "panelRamka": (201, 168, 110, 56),
-    "scenaTlo": "#0a0e13", "welon": 0,
+    "tlo": "#001309", "tlo2": "#011c12", "tlo3": "#01291b", "linia": "#023c27",
+    "tekst": "#ebf3f0", "tekst2": "#b3d1c7", "przygasz": "#86b6a5",
+    "akcent": "#036744", "akcent2": "#024a31", "akcentTekst": "#599b84",
+    "zloto": "#b9975b", "zloto2": "#856d42",
+    "ok": "#599b84", "uwaga": "#b9975b", "alarm": "#ff6b6b",
+    "naAkcencie": "#ffffff", "naPanelu": "#ebf3f0",
+    "panel": (1, 28, 18, 194), "panelRamka": (185, 151, 91, 56),
+    "scenaTlo": "#000805", "welon": 0,
 }
 
 JASNY = {
-    "tlo": "#f4f7f4", "tlo2": "#ffffff", "tlo3": "#e7efe9", "linia": "#cddbd2",
-    "tekst": "#0b2318", "tekst2": "#33523f", "przygasz": "#4b6a57",
-    "akcent": "#006341", "akcent2": "#004d33",
-    "zloto": "#8a6a2e", "zloto2": "#b9975b",
-    "ok": "#006341", "uwaga": "#8a6a2e", "alarm": "#b32626",
-    "naAkcencie": "#ffffff", "naPanelu": "#0b2318",
-    "panel": (255, 255, 255, 219), "panelRamka": (0, 99, 65, 56),
-    "scenaTlo": "#dde6e0", "welon": 56,
+    "tlo": "#f4f8f7", "tlo2": "#ffffff", "tlo3": "#e6f0ec", "linia": "#c8ded6",
+    "tekst": "#024830", "tekst2": "#036140", "przygasz": "#2f7a61",
+    "akcent": "#036744", "akcent2": "#024d33", "akcentTekst": "#036744",
+    "zloto": "#6b5835", "zloto2": "#b9975b",
+    "ok": "#036744", "uwaga": "#6b5835", "alarm": "#b32626",
+    "naAkcencie": "#ffffff", "naPanelu": "#024830",
+    "panel": (255, 255, 255, 219), "panelRamka": (3, 103, 68, 56),
+    "scenaTlo": "#e1ede9", "welon": 56,
 }
 
 B = dict(CIEMNY)          # biezaca paleta
@@ -87,6 +97,62 @@ def zasob(nazwa):
         if os.path.exists(p):
             return p
     return None
+
+
+def otworz_obraz(nazwa):
+    """Obraz do wyswietlenia — najpierw plik obok programu, potem wbudowany.
+
+    Kolejnosc jest wazna: plik ma pierwszenstwo, zeby dalo sie podmienic
+    zdjecie tla bez przebudowywania programu. Gdy pliku nie ma — a po
+    spakowaniu PyInstallerem latwo o to, bo kazdy plik trzeba osobno wpisac
+    na liste — program siega po wersje wpisana w kod i dziala tak samo.
+    """
+    plik = zasob(nazwa)
+    if plik:
+        try:
+            return Image.open(plik)
+        except (OSError, ValueError):
+            pass                      # uszkodzony plik — bierzemy wbudowany
+    try:
+        import io
+        import zasoby_wbudowane
+        dane = zasoby_wbudowane.dane(nazwa)
+        if dane:
+            return Image.open(io.BytesIO(dane))
+    except (ImportError, OSError, ValueError):
+        pass
+    return None
+
+
+def rgb_barwy(hex_barwy):
+    """'#011c12' -> (1, 28, 18)"""
+    h = hex_barwy.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def godlo_okragle(rozmiar, tlo_hex):
+    """Godlo wyciete w kolo, sklejone z barwa tla.
+
+    Godlo w pliku jest kwadratem — zielone naroza odcinaly sie od ciemnej
+    karty jako jasniejsza plama. Kolo wycinamy maska rysowana w czterokrotnym
+    powiekszeniu i zmniejszana, bo tylko wtedy krawedz jest gladka.
+
+    Sklejenie z tlem robimy tutaj, a nie zostawiamy tkinterowi: przy
+    przezroczystych krawedziach potrafi on zostawic czarna obwodke.
+    """
+    zrodlo = otworz_obraz("godlo-awf.png")
+    if zrodlo is None:
+        return None
+    obraz = zrodlo.convert("RGBA").resize((rozmiar, rozmiar), Image.LANCZOS)
+    maska = Image.new("L", (rozmiar * 4, rozmiar * 4), 0)
+    ImageDraw.Draw(maska).ellipse((0, 0, rozmiar * 4 - 1, rozmiar * 4 - 1),
+                                  fill=255)
+    maska = maska.resize((rozmiar, rozmiar), Image.LANCZOS)
+    kolo = Image.new("RGBA", (rozmiar, rozmiar), (0, 0, 0, 0))
+    kolo.paste(obraz, (0, 0), maska)
+    podklad = Image.new("RGBA", (rozmiar, rozmiar),
+                        rgb_barwy(tlo_hex) + (255,))
+    return Image.alpha_composite(podklad, kolo).convert("RGB")
 
 
 def katalog_domyslny():
@@ -771,7 +837,7 @@ class EkranPin(tk.Frame):
         # Numer wersji i stan aktualizacji — widoczne jeszcze przed PIN-em.
         # Dyzurny ma wiedziec, co ma zainstalowane, bez logowania sie.
         self.stopka = tk.Label(self, text="v" + VER, bg=B["tlo2"],
-                               fg=B["zloto2"], font=("Segoe UI", 9),
+                               fg=B["zloto"], font=("Segoe UI", 9),
                                padx=10, pady=4)
         self.stopka.place(relx=0.99, rely=0.98, anchor="se")
 
@@ -784,15 +850,15 @@ class EkranPin(tk.Frame):
         if W < 50 or H < 50 or (W, H) == self._rozmiar:
             return
         self._rozmiar = (W, H)
-        plik = zasob("logowanie-tlo.jpg")
-        if not plik:
-            # Zdjecia nie ma — mowimy o tym wprost, zamiast pokazywac
-            # pusty ekran i zgadywac, czy to wina programu.
+        zrodlo = otworz_obraz("logowanie-tlo.jpg")
+        if zrodlo is None:
+            # Nie powinno sie zdarzyc — zdjecie jest wpisane w kod. Gdyby
+            # jednak, mowimy o tym wprost zamiast pokazywac pusty ekran.
             self.tlo.configure(image="", bg=B["tlo"])
-            self.komunikat("brak pliku logowanie-tlo.jpg", B["uwaga"])
+            self.komunikat("brak zdjęcia tła", B["uwaga"])
             return
         try:
-            obraz = Image.open(plik).convert("RGB")
+            obraz = zrodlo.convert("RGB")
             sk = max(W / obraz.width, H / obraz.height)
             nowy = obraz.resize((max(1, int(obraz.width * sk)),
                                  max(1, int(obraz.height * sk))),
@@ -811,7 +877,7 @@ class EkranPin(tk.Frame):
     def komunikat(self, tekst, kolor=None):
         """Napis w rogu ekranu logowania: wersja albo postep aktualizacji."""
         try:
-            self.stopka.configure(text=tekst, fg=kolor or B["zloto2"])
+            self.stopka.configure(text=tekst, fg=kolor or B["zloto"])
         except tk.TclError:
             pass
 
@@ -840,22 +906,17 @@ class EkranPin(tk.Frame):
         w = tk.Frame(self.karta, bg=B["tlo2"], padx=30, pady=22)
         w.pack()
 
-        plik = zasob("godlo-awf.png")
-        if plik:
-            try:
-                obraz = Image.open(plik).convert("RGBA").resize((62, 62),
-                                                                Image.LANCZOS)
-                self._godlo = ImageTk.PhotoImage(obraz)
-                tk.Label(w, image=self._godlo, bg=B["tlo2"]).pack()
-            except (OSError, ValueError):
-                pass
+        kolo = godlo_okragle(64, B["tlo2"])
+        if kolo is not None:
+            self._godlo = ImageTk.PhotoImage(kolo)
+            tk.Label(w, image=self._godlo, bg=B["tlo2"], bd=0).pack()
 
         tk.Label(w, text=NAZWA, bg=B["tlo2"], fg=B["tekst"],
                  font=("Segoe UI Semibold", 15)).pack(pady=(10, 0))
         tk.Label(w, text=PODTYTUL, bg=B["tlo2"], fg=B["przygasz"],
                  font=("Segoe UI", 10)).pack()
 
-        self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcent"],
+        self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcentTekst"],
                                font=("Segoe UI", 18), height=1)
         self.kropki.pack(pady=(10, 0))
         self.info = tk.Label(w, text="", bg=B["tlo2"], fg=B["alarm"],
@@ -864,33 +925,40 @@ class EkranPin(tk.Frame):
 
         siatka = tk.Frame(w, bg=B["tlo2"])
         siatka.pack(pady=(8, 0))
+        # Klawisze o stalym rozmiarze 72x60 px. Przycisk dotykowy ponizej
+        # 44 px robi sie trudny do trafienia — tyle podaja wytyczne Apple,
+        # a Google mowi o 48. Kazdy klawisz siedzi we wlasnej ramce o
+        # narzuconym rozmiarze, bo szerokosc podawana Buttonowi liczy sie
+        # w znakach i przy roznych czcionkach daje rozne wielkosci.
         self.przyciski = []
         for i, znak in enumerate(self.KLAWISZE):
             glowny = znak == "OK"
+            komorka = tk.Frame(siatka, width=72, height=60, bg=B["tlo2"])
+            komorka.grid(row=i // 3, column=i % 3, padx=5, pady=5)
+            komorka.pack_propagate(False)
             b = tk.Button(
-                siatka, text=znak, width=4, relief="flat", bd=0,
-                cursor="hand2",
-                font=("Segoe UI Semibold", 18 if not glowny else 14),
-                pady=9, activeforeground=B["tekst"],
+                komorka, text=znak, relief="flat", bd=0, cursor="hand2",
+                font=("Segoe UI Semibold", 18 if not glowny else 15),
+                activeforeground=B["tekst"],
                 bg=B["akcent"] if glowny else B["tlo3"],
                 fg=B["naAkcencie"] if glowny else (
                     B["alarm"] if znak == "C" else B["tekst"]),
-                activebackground=B["zloto"] if glowny else B["linia"],
+                activebackground=B["akcent2"] if glowny else B["linia"],
                 command=lambda z=znak: self.klik(z))
-            b.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
+            b.pack(fill="both", expand=True)
             self.przyciski.append(b)
 
         # Pasek wgrywania aktualizacji — normalnie schowany, pokazuje sie
         # dopiero wtedy, gdy program pobiera nowa wersje.
         self.ramka_postepu = tk.Frame(w, bg=B["tlo2"])
         self.lbl_postep = tk.Label(self.ramka_postepu, text="", bg=B["tlo2"],
-                                   fg=B["akcent"],
+                                   fg=B["akcentTekst"],
                                    font=("Segoe UI Semibold", 9))
         self.lbl_postep.pack(anchor="w")
         tor = tk.Frame(self.ramka_postepu, bg=B["linia"], height=6)
         tor.pack(fill="x", pady=(4, 0))
         tor.pack_propagate(False)
-        self.wypelnienie = tk.Frame(tor, bg=B["akcent"])
+        self.wypelnienie = tk.Frame(tor, bg=B["akcentTekst"])
         self.wypelnienie.place(x=0, y=0, relwidth=0, relheight=1)
 
         self._lbl_fabryczny = tk.Label(
@@ -1381,17 +1449,26 @@ class App(tk.Tk):
 
         marka = tk.Frame(self.gora, bg=B["tlo2"])
         marka.pack(side="left", padx=(14, 0))
-        plik = zasob("logo-awf.png" if B["welon"] else "godlo-awf.png")
-        if plik:
-            obraz = Image.open(plik).convert("RGBA")
-            if B["welon"]:
+        if B["welon"]:
+            # W trybie jasnym pelne logo poziome — na bieli czyta sie lepiej.
+            zrodlo = otworz_obraz("logo-awf.png")
+            if zrodlo is not None:
+                obraz = zrodlo.convert("RGBA")
                 h = 28
                 obraz = obraz.resize((int(obraz.width * h / obraz.height), h),
                                      Image.LANCZOS)
-            else:
-                obraz = obraz.resize((36, 36), Image.LANCZOS)
-            self._znak = ImageTk.PhotoImage(obraz)
-            tk.Label(marka, image=self._znak, bg=B["tlo2"]).pack(side="left")
+                podklad = Image.new("RGBA", obraz.size,
+                                    rgb_barwy(B["tlo2"]) + (255,))
+                self._znak = ImageTk.PhotoImage(
+                    Image.alpha_composite(podklad, obraz).convert("RGB"))
+                tk.Label(marka, image=self._znak, bg=B["tlo2"], bd=0
+                         ).pack(side="left")
+        else:
+            kolo = godlo_okragle(36, B["tlo2"])
+            if kolo is not None:
+                self._znak = ImageTk.PhotoImage(kolo)
+                tk.Label(marka, image=self._znak, bg=B["tlo2"], bd=0
+                         ).pack(side="left")
 
         podpis = tk.Frame(marka, bg=B["tlo2"])
         podpis.pack(side="left", padx=(11, 0))
@@ -1527,7 +1604,7 @@ class App(tk.Tk):
                       cursor="hand2", font=("Segoe UI", 10), padx=16, pady=8,
                       bg=B["akcent"] if glowny else B["tlo3"],
                       fg=B["naAkcencie"] if glowny else B["tekst"],
-                      activebackground=B["zloto"] if glowny else B["linia"]
+                      activebackground=B["akcent2"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
 
     def _buduj_kierowcow(self):
@@ -1578,7 +1655,7 @@ class App(tk.Tk):
             tk.Label(k, text=etykieta.upper(), bg=B["tlo2"], fg=B["przygasz"],
                      font=("Segoe UI", 8), anchor="w").pack(anchor="w", padx=14,
                                                             pady=(12, 0))
-            v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcent"],
+            v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcentTekst"],
                          font=("Segoe UI Semibold", 13), anchor="w")
             v.pack(anchor="w", padx=14, pady=(2, 12))
             self.karty_ster[etykieta] = v
@@ -1669,7 +1746,7 @@ class App(tk.Tk):
                       cursor="hand2", font=("Segoe UI", 10), padx=14, pady=7,
                       bg=B["akcent"] if glowny else B["tlo3"],
                       fg=B["naAkcencie"] if glowny else B["tekst"],
-                      activebackground=B["zloto"] if glowny else B["linia"]
+                      activebackground=B["akcent2"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
 
         v_pelny = tk.BooleanVar(value=self.d.get("start_pelny", False))
@@ -2367,7 +2444,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             self.log(f"zaktualizowano do wersji {tresc or VER}")
             nowa = tresc or VER
             self.after(600, lambda: self._pasek_informacyjny(
-                f"Zaktualizowano do wersji {nowa}", B["ok"]))
+                f"Zaktualizowano do wersji {nowa}", B["akcent"]))
         else:
             self.log("aktualizacja nieudana: " + tresc)
             self.after(600, lambda: messagebox.showwarning(
@@ -2583,7 +2660,8 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         pole.pack(fill="both", expand=True)
 
         pole.tag_configure("wersja", font=("Segoe UI Semibold", 13),
-                           foreground=B["akcent"], spacing1=14, spacing3=2)
+                           foreground=B["akcentTekst"], spacing1=14,
+                           spacing3=2)
         pole.tag_configure("biezaca", font=("Segoe UI Semibold", 13),
                            foreground=B["zloto"], spacing1=14, spacing3=2)
         pole.tag_configure("data", font=("Consolas", 9), foreground=B["przygasz"])
