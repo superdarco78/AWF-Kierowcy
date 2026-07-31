@@ -1,16 +1,6 @@
-# katalogi budowania
 build/
 dist/
 __pycache__/
 *.spec
-
-# dane lokalne — NIGDY nie wrzucac na GitHuba
 baza.json
-config.php
-*.db
-*.sqlite
-
-# systemowe
 Thumbs.db
-desktop.ini
-.DS_Store

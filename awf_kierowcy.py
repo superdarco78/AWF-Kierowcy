@@ -79,14 +79,48 @@ def zasob(nazwa):
     return p if os.path.exists(p) else None
 
 
-def katalog_danych():
+def katalog_domyslny():
     baza = os.environ.get("APPDATA") or os.path.expanduser("~")
     kat = os.path.join(baza, "AWF-Kierowcy")
     os.makedirs(kat, exist_ok=True)
     return kat
 
 
-PLIK_BAZY = os.path.join(katalog_danych(), "baza.json")
+def plik_wskazania():
+    """Maly plik obok ustawien, mowiacy gdzie trzymac baze."""
+    return os.path.join(katalog_domyslny(), "gdzie-baza.txt")
+
+
+def katalog_danych():
+    """Katalog z baza. Domyslnie w ustawieniach uzytkownika, ale mozna
+    wskazac inny — na przyklad w OneDrive, zeby ta sama baza byla
+    widoczna na kilku komputerach."""
+    try:
+        with open(plik_wskazania(), encoding="utf-8") as f:
+            kat = f.read().strip()
+        if kat and os.path.isdir(kat):
+            return kat
+    except OSError:
+        pass
+    return katalog_domyslny()
+
+
+def ustaw_katalog_danych(kat):
+    """Zapisuje wskazanie. Pusty tekst przywraca katalog domyslny."""
+    try:
+        if kat:
+            os.makedirs(kat, exist_ok=True)
+            with open(plik_wskazania(), "w", encoding="utf-8") as f:
+                f.write(kat)
+        elif os.path.exists(plik_wskazania()):
+            os.remove(plik_wskazania())
+        return True
+    except OSError:
+        return False
+
+
+def sciezka_bazy():
+    return os.path.join(katalog_danych(), "baza.json")
 SOL = "awf-kierowcy-2026"
 
 
@@ -139,9 +173,10 @@ def domyslna_baza():
 
 
 def wczytaj():
-    if os.path.exists(PLIK_BAZY):
+    sciezka = sciezka_bazy()
+    if os.path.exists(sciezka):
         try:
-            with open(PLIK_BAZY, encoding="utf-8") as f:
+            with open(sciezka, encoding="utf-8") as f:
                 d = json.load(f)
             wzor = domyslna_baza()
             for k, v in wzor.items():
@@ -156,10 +191,11 @@ def wczytaj():
 
 def zapisz(d):
     try:
-        tmp = PLIK_BAZY + ".tmp"
+        sciezka = sciezka_bazy()
+        tmp = sciezka + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, PLIK_BAZY)      # zapis atomowy — brak polowicznych plikow
+        os.replace(tmp, sciezka)      # zapis atomowy — brak polowicznych plikow
     except OSError as e:
         print("Nie udalo sie zapisac bazy:", e)
 
@@ -919,7 +955,39 @@ class App(tk.Tk):
                   fg=B["naAkcencie"], font=("Segoe UI", 10), padx=16, pady=6
                   ).grid(row=1, column=2, sticky="w")
 
-        self._przyciski(w, [("Zmień PIN", self.zmien_pin, False),
+        # --- gdzie trzymac baze ---
+        r2 = tk.Frame(w, bg=B["tlo2"], highlightthickness=1,
+                      highlightbackground=B["linia"])
+        r2.pack(fill="x", padx=24, pady=(0, 16))
+        s2 = tk.Frame(r2, bg=B["tlo2"], padx=18, pady=16)
+        s2.pack(fill="x")
+        tk.Label(s2, text="GDZIE TRZYMAĆ BAZĘ NUMERÓW", bg=B["tlo2"],
+                 fg=B["przygasz"], font=("Segoe UI Semibold", 8)).pack(anchor="w")
+        tk.Label(s2, text="Wskaż katalog w OneDrive, a ta sama baza będzie "
+                          "widoczna na każdym komputerze, gdzie zainstalujesz "
+                          "program. Nic nie trzeba wpisywać drugi raz.",
+                 bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 9),
+                 wraplength=760, justify="left").pack(anchor="w", pady=(4, 10))
+        self.lbl_katalog = tk.Label(
+            s2, text=katalog_danych(), bg=B["tlo3"], fg=B["tekst"],
+            font=("Consolas", 9), anchor="w", padx=10, pady=7)
+        self.lbl_katalog.pack(fill="x")
+        pk = tk.Frame(s2, bg=B["tlo2"])
+        pk.pack(anchor="w", pady=(10, 0))
+        for tekst, akcja, glowny in (
+                ("Wskaż katalog w OneDrive", self.wybierz_katalog, True),
+                ("Wróć do domyślnego", self.katalog_domyslny_wroc, False),
+                ("Otwórz katalog", self.otworz_katalog, False)):
+            tk.Button(pk, text=tekst, command=akcja, relief="flat", bd=0,
+                      cursor="hand2", font=("Segoe UI", 10), padx=14, pady=7,
+                      bg=B["akcent"] if glowny else B["tlo3"],
+                      fg=B["naAkcencie"] if glowny else B["tekst"],
+                      activebackground=B["zloto"] if glowny else B["linia"]
+                      ).pack(side="left", padx=(0, 8))
+
+        self._przyciski(w, [("Zapisz kopię bazy", self.kopia_zapisz, False),
+                            ("Wczytaj kopię", self.kopia_wczytaj, False),
+                            ("Zmień PIN", self.zmien_pin, False),
                             ("Sprawdź aktualizacje", self.sprawdz_recznie, True)])
         self.lbl_akt = tk.Label(
             w, text=f"Wersja programu: {VER}  ·  jeszcze nie sprawdzano",
@@ -1124,6 +1192,103 @@ class App(tk.Tk):
             text=f'{self.d["nazwa"]} {VER}  ·  Straż Akademicka')
         self.log("nazwa systemu: " + self.d["nazwa"])
 
+    def wybierz_katalog(self):
+        from tkinter import filedialog
+        start = os.path.join(os.path.expanduser("~"), "OneDrive")
+        if not os.path.isdir(start):
+            start = os.path.expanduser("~")
+        kat = filedialog.askdirectory(
+            parent=self, initialdir=start,
+            title="Wybierz katalog na bazę — najlepiej w OneDrive")
+        if not kat:
+            return
+        stara = sciezka_bazy()
+        if not ustaw_katalog_danych(kat):
+            messagebox.showwarning("Katalog", "Nie udało się zapisać wskazania.",
+                                   parent=self)
+            return
+        nowa = sciezka_bazy()
+        if os.path.exists(stara) and not os.path.exists(nowa):
+            try:
+                import shutil
+                shutil.copy2(stara, nowa)
+                self.log("baza skopiowana do nowego katalogu")
+            except OSError as e:
+                self.log("nie udało się skopiować bazy: " + str(e))
+        self.d = wczytaj()
+        self.lbl_katalog.configure(text=katalog_danych())
+        self.odswiez_kierowcow()
+        messagebox.showinfo(
+            "Katalog zmieniony",
+            "Baza jest teraz w:\n" + katalog_danych() +
+            "\n\nNa drugim komputerze zainstaluj program i wskaż ten sam "
+            "katalog — numery pojawią się same.", parent=self)
+
+    def katalog_domyslny_wroc(self):
+        ustaw_katalog_danych("")
+        self.d = wczytaj()
+        self.lbl_katalog.configure(text=katalog_danych())
+        self.odswiez_kierowcow()
+        self.log("baza wróciła do katalogu domyślnego")
+
+    def otworz_katalog(self):
+        kat = katalog_danych()
+        try:
+            if sys.platform == "win32":
+                os.startfile(kat)
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", kat])
+        except OSError as e:
+            messagebox.showinfo("Katalog", kat, parent=self)
+            self.log("nie udało się otworzyć katalogu: " + str(e))
+
+    def kopia_zapisz(self):
+        from tkinter import filedialog
+        nazwa = "kopia-AWF-Kierowcy-" + datetime.now().strftime("%Y-%m-%d") + ".json"
+        plik = filedialog.asksaveasfilename(
+            parent=self, defaultextension=".json", initialfile=nazwa,
+            filetypes=[("Kopia bazy", "*.json")], title="Zapisz kopię bazy")
+        if not plik:
+            return
+        try:
+            with open(plik, "w", encoding="utf-8") as f:
+                json.dump(self.d, f, ensure_ascii=False, indent=1)
+            self.log("zapisano kopię: " + os.path.basename(plik))
+            messagebox.showinfo("Kopia", "Kopia zapisana.", parent=self)
+        except OSError as e:
+            messagebox.showwarning("Kopia", "Nie udało się zapisać:\n" + str(e),
+                                   parent=self)
+
+    def kopia_wczytaj(self):
+        from tkinter import filedialog
+        plik = filedialog.askopenfilename(
+            parent=self, filetypes=[("Kopia bazy", "*.json")],
+            title="Wczytaj kopię bazy")
+        if not plik:
+            return
+        if not messagebox.askyesno(
+                "Wczytanie kopii",
+                "Obecna baza zostanie zastąpiona zawartością kopii.\n\n"
+                "Kontynuować?", parent=self):
+            return
+        try:
+            with open(plik, encoding="utf-8") as f:
+                nowa = json.load(f)
+            if "kierowcy" not in nowa:
+                raise ValueError("to nie jest kopia bazy AWF KIEROWCY")
+            self.d = nowa
+            zapisz(self.d)
+            self.odswiez_kierowcow()
+            self.odswiez_historie()
+            self.log("wczytano kopię: " + os.path.basename(plik))
+            messagebox.showinfo(
+                "Kopia", f'Wczytano {len(nowa.get("kierowcy", []))} numerów.',
+                parent=self)
+        except (OSError, ValueError, json.JSONDecodeError) as e:
+            messagebox.showwarning("Kopia", "Nie udało się wczytać:\n" + str(e),
+                                   parent=self)
+
     def zmien_pin(self):
         from tkinter import simpledialog
         nowy = simpledialog.askstring("Zmiana PIN-u", "Nowy PIN (4–8 cyfr):",
@@ -1140,9 +1305,172 @@ class App(tk.Tk):
         self.log("zmieniono PIN")
 
     def okno_kierowcy(self, idx):
-        messagebox.showinfo("W przygotowaniu",
-                            "Okno dodawania i edycji kierowcy dokładam "
-                            "w następnej wersji.", parent=self)
+        """Okno dodawania i edycji. idx=None znaczy nowy wpis."""
+        nowy = idx is None or idx >= len(self.d["kierowcy"])
+        k = ({"imie": "", "rola": "", "tel": "", "dni": list(DNI),
+              "od": "00:00", "do": "23:59", "wazny": "", "ile": 0,
+              "aktywny": True} if nowy else dict(self.d["kierowcy"][idx]))
+
+        w = tk.Toplevel(self)
+        w.title("Nowy numer" if nowy else "Edycja numeru")
+        w.configure(bg=B["tlo2"])
+        w.resizable(False, False)
+        w.transient(self)
+        w.grab_set()
+        r = tk.Frame(w, bg=B["tlo2"], padx=26, pady=22)
+        r.pack(fill="both", expand=True)
+
+        def etykieta(tekst):
+            tk.Label(r, text=tekst, bg=B["tlo2"], fg=B["przygasz"],
+                     font=("Segoe UI", 9), anchor="w").pack(anchor="w",
+                                                            pady=(12, 3))
+
+        def pole(wartosc, szerokosc=42):
+            e = tk.Entry(r, bg=B["tlo3"], fg=B["tekst"], relief="flat",
+                         font=("Segoe UI", 11), insertbackground=B["tekst"],
+                         width=szerokosc)
+            e.insert(0, wartosc)
+            e.pack(anchor="w", ipady=6, fill="x")
+            return e
+
+        etykieta("Kierowca lub nazwa firmy")
+        p_imie = pole(k["imie"])
+        etykieta("Rola")
+        p_rola = ttk.Combobox(r, values=[
+            "Straż Akademicka", "Rektorat", "Wydział", "Administracja",
+            "Dział Techniczny", "Dostawca", "Wykonawca", "Serwis",
+            "Pracownik", "Gość"], font=("Segoe UI", 11))
+        p_rola.set(k.get("rola", ""))
+        p_rola.pack(anchor="w", fill="x", ipady=3)
+        etykieta("Numer telefonu")
+        p_tel = pole(k["tel"])
+
+        etykieta("Dni tygodnia")
+        ram_dni = tk.Frame(r, bg=B["tlo2"])
+        ram_dni.pack(anchor="w")
+        zmienne = {}
+        for i, (skrot, pelna) in enumerate(zip(DNI, DNI_PELNE)):
+            v = tk.BooleanVar(value=skrot in k.get("dni", DNI))
+            zmienne[skrot] = v
+            tk.Checkbutton(ram_dni, text=skrot, variable=v, bg=B["tlo2"],
+                           fg=B["tekst"], selectcolor=B["tlo3"],
+                           activebackground=B["tlo2"], activeforeground=B["tekst"],
+                           font=("Segoe UI", 10)).grid(row=0, column=i, padx=(0, 6))
+
+        szybkie = tk.Frame(r, bg=B["tlo2"])
+        szybkie.pack(anchor="w", pady=(6, 0))
+
+        def ustaw_dni(lista):
+            for sk, v in zmienne.items():
+                v.set(sk in lista)
+        for tekst, lista in (("cały tydzień", DNI), ("pn–pt", DNI[:5]),
+                             ("weekend", DNI[5:])):
+            tk.Button(szybkie, text=tekst, command=lambda l=lista: ustaw_dni(l),
+                      relief="flat", bd=0, cursor="hand2", bg=B["tlo3"],
+                      fg=B["tekst2"], font=("Segoe UI", 9), padx=10, pady=4
+                      ).pack(side="left", padx=(0, 6))
+
+        godz = tk.Frame(r, bg=B["tlo2"])
+        godz.pack(anchor="w", fill="x", pady=(12, 0))
+        for tekst, kol in (("Od godziny", 0), ("Do godziny", 1),
+                           ("Ważny do (RRRR-MM-DD)", 2)):
+            tk.Label(godz, text=tekst, bg=B["tlo2"], fg=B["przygasz"],
+                     font=("Segoe UI", 9)).grid(row=0, column=kol, sticky="w",
+                                                padx=(0, 10), pady=(0, 3))
+        p_od = tk.Entry(godz, bg=B["tlo3"], fg=B["tekst"], relief="flat",
+                        font=("Segoe UI", 11), width=9,
+                        insertbackground=B["tekst"])
+        p_od.insert(0, k.get("od", "00:00"))
+        p_od.grid(row=1, column=0, sticky="w", ipady=6, padx=(0, 10))
+        p_do = tk.Entry(godz, bg=B["tlo3"], fg=B["tekst"], relief="flat",
+                        font=("Segoe UI", 11), width=9,
+                        insertbackground=B["tekst"])
+        p_do.insert(0, k.get("do", "23:59"))
+        p_do.grid(row=1, column=1, sticky="w", ipady=6, padx=(0, 10))
+        p_waz = tk.Entry(godz, bg=B["tlo3"], fg=B["tekst"], relief="flat",
+                         font=("Segoe UI", 11), width=16,
+                         insertbackground=B["tekst"])
+        p_waz.insert(0, k.get("wazny", ""))
+        p_waz.grid(row=1, column=2, sticky="w", ipady=6)
+
+        v_akt = tk.BooleanVar(value=k.get("aktywny", True))
+        tk.Checkbutton(r, text="Numer aktywny — może wjeżdżać",
+                       variable=v_akt, bg=B["tlo2"], fg=B["tekst"],
+                       selectcolor=B["tlo3"], activebackground=B["tlo2"],
+                       activeforeground=B["tekst"], font=("Segoe UI", 10)
+                       ).pack(anchor="w", pady=(16, 0))
+
+        blad = tk.Label(r, text="", bg=B["tlo2"], fg=B["alarm"],
+                        font=("Segoe UI", 9))
+        blad.pack(anchor="w", pady=(8, 0))
+
+        def zapisz_wpis():
+            imie = p_imie.get().strip()
+            tel = p_tel.get().strip()
+            if not imie:
+                blad.configure(text="Podaj kierowcę lub nazwę firmy.")
+                return
+            if not tel:
+                blad.configure(text="Podaj numer telefonu.")
+                return
+            cyfry = "".join(z for z in tel if z.isdigit())
+            if len(cyfry) < 9:
+                blad.configure(text="Numer wygląda na za krótki.")
+                return
+            if len(cyfry) == 9:
+                tel = "+48 " + cyfry[:3] + " " + cyfry[3:6] + " " + cyfry[6:]
+            dni = [sk for sk, v in zmienne.items() if v.get()]
+            if not dni:
+                blad.configure(text="Zaznacz przynajmniej jeden dzień.")
+                return
+            for pole_g, nazwa in ((p_od, "Od"), (p_do, "Do")):
+                t = pole_g.get().strip()
+                try:
+                    datetime.strptime(t, "%H:%M")
+                except ValueError:
+                    blad.configure(text=f"Godzina „{nazwa}” ma być w formacie 08:00.")
+                    return
+            waz = p_waz.get().strip()
+            if waz:
+                try:
+                    datetime.strptime(waz, "%Y-%m-%d")
+                except ValueError:
+                    blad.configure(text="Data ważności ma być w formacie 2026-12-31.")
+                    return
+
+            wpis = {"imie": imie, "rola": p_rola.get().strip(), "tel": tel,
+                    "dni": dni, "od": p_od.get().strip(),
+                    "do": p_do.get().strip(), "wazny": waz,
+                    "aktywny": v_akt.get(),
+                    "ile": 0 if nowy else self.d["kierowcy"][idx].get("ile", 0)}
+            if nowy:
+                self.d["kierowcy"].append(wpis)
+                self.log("dodano numer: " + imie)
+            else:
+                self.d["kierowcy"][idx] = wpis
+                self.log("zapisano zmiany: " + imie)
+            zapisz(self.d)
+            self.odswiez_kierowcow()
+            w.destroy()
+
+        guziki = tk.Frame(r, bg=B["tlo2"])
+        guziki.pack(fill="x", pady=(18, 0))
+        tk.Button(guziki, text="Zapisz", command=zapisz_wpis, relief="flat",
+                  bd=0, cursor="hand2", bg=B["akcent"], fg=B["naAkcencie"],
+                  font=("Segoe UI Semibold", 10), padx=20, pady=9
+                  ).pack(side="right")
+        tk.Button(guziki, text="Anuluj", command=w.destroy, relief="flat",
+                  bd=0, cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                  font=("Segoe UI", 10), padx=18, pady=9
+                  ).pack(side="right", padx=(0, 8))
+
+        p_imie.focus_set()
+        w.bind("<Return>", lambda _e: zapisz_wpis())
+        w.bind("<Escape>", lambda _e: w.destroy())
+        w.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - w.winfo_width()) // 2
+        y = self.winfo_rooty() + 70
+        w.geometry(f"+{max(0, x)}+{max(0, y)}")
 
     def usun_kierowce(self):
         if not self.d["kierowcy"]:
@@ -1157,9 +1485,122 @@ class App(tk.Tk):
             self.log("usunięto numer: " + k["imie"])
 
     def raport(self):
-        messagebox.showinfo("W przygotowaniu",
-                            "Raport do wydruku dokładam w następnej wersji.",
-                            parent=self)
+        """Zestawienie w przegladarce — stamtad mozna wydrukowac
+        albo zapisac jako PDF."""
+        h = self.d.get("historia", [])
+        if not h:
+            messagebox.showinfo("Raport", "Historia jest pusta.", parent=self)
+            return
+
+        teraz = datetime.now()
+        dzis = teraz.strftime("%d.%m.%Y")
+        odmowy = [w for w in h if w.get("sposob", "").startswith("ODMOWA")]
+        reczne = [w for w in h if "ręczne" in w.get("sposob", "")]
+
+        godziny = {}
+        for w in h:
+            g = w.get("godzina", "")[:2]
+            if g.isdigit():
+                godziny[g] = godziny.get(g, 0) + 1
+        szczyt = max(godziny.items(), key=lambda x: x[1])[0] if godziny else "—"
+
+        osoby = {}
+        for w in h:
+            if not w.get("sposob", "").startswith("ODMOWA"):
+                osoby[w.get("imie", "?")] = osoby.get(w.get("imie", "?"), 0) + 1
+        naj = sorted(osoby.items(), key=lambda x: -x[1])[:10]
+
+        obiekty = {}
+        for w in h:
+            obiekty[w.get("obiekt", "?")] = obiekty.get(w.get("obiekt", "?"), 0) + 1
+
+        def wiersze(lista):
+            out = []
+            for w in lista:
+                sposob = w.get("sposob", "")
+                klasa = ("odmowa" if sposob.startswith("ODMOWA")
+                         else ("reczne" if "ręczne" in sposob else ""))
+                out.append(
+                    f'<tr class="{klasa}"><td>{w.get("data","")}</td>'
+                    f'<td>{w.get("godzina","")}</td><td>{w.get("imie","")}</td>'
+                    f'<td>{w.get("tel","")}</td><td>{w.get("obiekt","")}</td>'
+                    f'<td>{sposob}</td></tr>')
+            return "\n".join(out)
+
+        html = f"""<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8">
+<title>Raport wjazdów — {dzis}</title><style>
+body{{font:12pt "Segoe UI",sans-serif;color:#111;margin:26px;}}
+h1{{font-size:19pt;margin:0;color:#006341}}
+.pod{{color:#666;font-size:10pt;margin:3px 0 22px}}
+.kafle{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}}
+.k{{border:1px solid #cddbd2;padding:11px 16px;min-width:120px}}
+.k .e{{font-size:8pt;color:#777;text-transform:uppercase;letter-spacing:.5px}}
+.k .w{{font-size:19pt;font-weight:600;color:#006341;margin-top:3px}}
+table{{width:100%;border-collapse:collapse;font-size:9.5pt}}
+th{{background:#006341;color:#fff;text-align:left;padding:7px 9px;font-size:8pt;
+    text-transform:uppercase}}
+td{{padding:6px 9px;border-bottom:1px solid #e4ebe6}}
+tr.odmowa td{{color:#b32626}}
+tr.reczne td{{color:#8a6a2e}}
+h2{{font-size:12pt;margin:26px 0 8px;color:#006341}}
+.stopka{{margin-top:26px;padding-top:10px;border-top:1px solid #cddbd2;
+        font-size:8.5pt;color:#777}}
+@media print{{body{{margin:12mm}} .k{{break-inside:avoid}}}}
+</style></head><body>
+
+<h1>Raport wjazdów</h1>
+<div class="pod">{self.d.get("nazwa", NAZWA)} · Straż Akademicka AWF ·
+sporządzono {teraz.strftime("%d.%m.%Y o %H:%M")}</div>
+
+<div class="kafle">
+  <div class="k"><div class="e">Wszystkich wpisów</div><div class="w">{len(h)}</div></div>
+  <div class="k"><div class="e">Dzisiaj</div><div class="w">{sum(1 for w in h if w.get("data") == dzis)}</div></div>
+  <div class="k"><div class="e">Odmowy</div><div class="w">{len(odmowy)}</div></div>
+  <div class="k"><div class="e">Ręczne otwarcia</div><div class="w">{len(reczne)}</div></div>
+  <div class="k"><div class="e">Szczyt ruchu</div><div class="w">{szczyt}:00</div></div>
+</div>
+
+<h2>Obiekty</h2>
+<table><tr><th>Obiekt</th><th>Wjazdów</th></tr>
+{"".join(f"<tr><td>{o}</td><td>{n}</td></tr>" for o, n in sorted(obiekty.items(), key=lambda x: -x[1]))}
+</table>
+
+<h2>Najczęściej wjeżdżający</h2>
+<table><tr><th>Kierowca</th><th>Wjazdów</th></tr>
+{"".join(f"<tr><td>{i}</td><td>{n}</td></tr>" for i, n in naj)}
+</table>
+
+<h2>Odmowy dostępu ({len(odmowy)})</h2>
+<table><tr><th>Data</th><th>Godzina</th><th>Kierowca</th><th>Telefon</th>
+<th>Obiekt</th><th>Powód</th></tr>
+{wiersze(odmowy[-40:]) if odmowy else '<tr><td colspan="6">brak</td></tr>'}
+</table>
+
+<h2>Ostatnie wjazdy</h2>
+<table><tr><th>Data</th><th>Godzina</th><th>Kierowca</th><th>Telefon</th>
+<th>Obiekt</th><th>Sposób</th></tr>
+{wiersze(list(reversed(h))[:120])}
+</table>
+
+<div class="stopka">
+Akademia Wychowania Fizycznego Józefa Piłsudskiego w Warszawie ·
+Marymoncka 34, 00-968 Warszawa · straz@awf.edu.pl<br>
+Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
+</div>
+</body></html>"""
+
+        try:
+            import tempfile
+            import webbrowser
+            plik = os.path.join(tempfile.gettempdir(),
+                                f"raport-wjazdow-{teraz.strftime('%Y%m%d-%H%M')}.html")
+            with open(plik, "w", encoding="utf-8") as f:
+                f.write(html)
+            webbrowser.open("file://" + plik.replace("\\", "/"))
+            self.log("raport otwarty w przeglądarce")
+        except OSError as e:
+            messagebox.showwarning("Raport", "Nie udało się utworzyć raportu:\n"
+                                   + str(e), parent=self)
 
     def czysc_historie(self):
         granica = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")

@@ -29,7 +29,6 @@ import urllib.error
 import urllib.request
 import zipfile
 
-# Jesli zmienisz nazwe repozytorium na GitHubie, popraw tylko te linijke.
 REPO = "superdarco78/AWF-Kierowcy"
 ADRES_WERSJI = f"https://raw.githubusercontent.com/{REPO}/main/wersja.json"
 LIMIT_S = 8
@@ -59,7 +58,7 @@ def nowsza(kandydat, obecna):
 # sprawdzanie dostepnosci
 # --------------------------------------------------------------------------
 
-def stan_serwera(obecna_wersja, adres=ADRES_WERSJI):
+def stan_serwera(obecna_wersja, adres=None):
     """Pyta serwer i zwraca (rodzaj, dane).
 
     rodzaj:
@@ -67,6 +66,9 @@ def stan_serwera(obecna_wersja, adres=ADRES_WERSJI):
       "aktualna"  — masz najnowsza, dane to numer wersji na serwerze
       "brak"      — nie udalo sie polaczyc, dane to opis problemu
     """
+    # adres czytamy przy kazdym wywolaniu, nie raz przy starcie —
+    # dzieki temu da sie go podmienic bez przebudowywania programu
+    adres = adres or ADRES_WERSJI
     try:
         zadanie = urllib.request.Request(
             adres, headers={"User-Agent": "AWF-Kierowcy"})
@@ -92,14 +94,14 @@ def stan_serwera(obecna_wersja, adres=ADRES_WERSJI):
     }
 
 
-def sprawdz(obecna_wersja, adres=ADRES_WERSJI):
+def sprawdz(obecna_wersja, adres=None):
     """Zwraca slownik z opisem aktualizacji albo None. Nigdy nie rzuca
     wyjatkiem — brak internetu nie moze przeszkodzic w uruchomieniu."""
     rodzaj, dane = stan_serwera(obecna_wersja, adres)
     return dane if rodzaj == "jest" else None
 
 
-def sprawdz_w_tle(obecna_wersja, gdy_jest, adres=ADRES_WERSJI):
+def sprawdz_w_tle(obecna_wersja, gdy_jest, adres=None):
     """Sprawdza w osobnym watku, zeby okno programu nie stalo.
 
     `gdy_jest` dostanie slownik z opisem aktualizacji. Wywolanie trzeba
