@@ -101,6 +101,38 @@ def sprawdz(obecna_wersja, adres=None):
     return dane if rodzaj == "jest" else None
 
 
+def historia_wersji(limit=20, adres=None):
+    """Lista wydan z GitHuba: numer, data i opis zmian.
+
+    Zwraca liste slownikow albo pusta liste, gdy nie udalo sie polaczyc.
+    Nigdy nie rzuca wyjatkiem.
+    """
+    adres = adres or f"https://api.github.com/repos/{REPO}/releases?per_page={limit}"
+    try:
+        zadanie = urllib.request.Request(
+            adres, headers={"User-Agent": "AWF-Kierowcy",
+                            "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(zadanie, timeout=LIMIT_S) as odp:
+            dane = json.loads(odp.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
+        return []
+
+    if not isinstance(dane, list):
+        return []
+    out = []
+    for w in dane:
+        znacznik = str(w.get("tag_name", "")).lstrip("vV")
+        if not znacznik:
+            continue
+        out.append({
+            "wersja": znacznik,
+            "data": str(w.get("published_at", ""))[:10],
+            "opis": (w.get("body") or "").strip(),
+        })
+    out.sort(key=lambda x: rozbij(x["wersja"]), reverse=True)
+    return out
+
+
 def sprawdz_w_tle(obecna_wersja, gdy_jest, adres=None):
     """Sprawdza w osobnym watku, zeby okno programu nie stalo.
 
@@ -193,7 +225,7 @@ def rozpakuj(plik_zip):
 
 POMOCNIK = r"""@echo off
 chcp 65001 >nul
-title WARTA AWF - aktualizacja
+title AWF KIEROWCY - aktualizacja
 
 echo Czekam na zamkniecie programu...
 :czekaj
@@ -205,41 +237,83 @@ if not errorlevel 1 (
 
 echo Zapisuje kopie poprzedniej wersji...
 if exist "{kopia}" rmdir /s /q "{kopia}"
-mkdir "{kopia}"
+mkdir "{kopia}" 2>nul
 xcopy "{docelowy}\*" "{kopia}\" /E /I /Y /Q >nul
 
 echo Podmieniam pliki...
 xcopy "{zrodlo}\*" "{docelowy}\" /E /I /Y /Q
 if errorlevel 1 (
+    echo.
     echo Podmiana sie nie udala - przywracam poprzednia wersje.
     xcopy "{kopia}\*" "{docelowy}\" /E /I /Y /Q >nul
-    echo Przywrocono. Nacisnij dowolny klawisz.
-    pause >nul
+    echo Przywrocono poprzednia wersje.
+    pause
     exit /b 1
 )
 
 echo Uruchamiam program...
-cd /d "{docelowy}"
-start "" {program}
+
+rem Szukamy pliku programu zamiast zakladac sciezke.
+set "PROGRAM="
+if exist "{docelowy}\{nazwa_exe}" set "PROGRAM={docelowy}\{nazwa_exe}"
+
+if not defined PROGRAM (
+    for %%P in ("{docelowy}\*.exe") do (
+        if not defined PROGRAM set "PROGRAM=%%~fP"
+    )
+)
+
+if defined PROGRAM (
+    start "" /D "{docelowy}" "%PROGRAM%"
+) else (
+    rem Uruchomienie ze zrodel - wtedy potrzebny jest Python.
+    if exist "{docelowy}\{nazwa_skryptu}" (
+        start "" /D "{docelowy}" cmd /c "{polecenie_zrodel}"
+    ) else (
+        echo.
+        echo Nie znaleziono programu w:
+        echo   {docelowy}
+        echo.
+        echo Pliki zostaly podmienione poprawnie - uruchom program
+        echo recznie z tego katalogu albo ze skrotu na pulpicie.
+        echo.
+        echo Okno zamknie sie za 15 sekund.
+        timeout /t 15 /nobreak >nul
+        exit /b 1
+    )
+)
+
 timeout /t 2 /nobreak >nul
 rmdir /s /q "{tymczasowy}" 2>nul
 exit
 """
 
 
-def przygotuj_pomocnika(katalog_nowych, katalog_programu, sciezka_programu):
+def nazwa_programu():
+    """Nazwa pliku programu — po spakowaniu PyInstallerem to plik exe."""
+    if getattr(sys, "frozen", False):
+        return os.path.basename(sys.executable)
+    return "AWF-Kierowcy.exe"
+
+
+def przygotuj_pomocnika(katalog_nowych, katalog_programu, sciezka_programu=None):
     """Tworzy plik wsadowy, ktory podmieni pliki po zamknieciu programu.
 
-    Zwraca sciezke do pliku. Nie uruchamia go — o tym decyduje program glowny.
+    Plik sam szuka programu w katalogu docelowym zamiast zakladac sciezke.
+    Po podmianie plikow nazwa albo polozenie moga sie roznic od tego,
+    co bylo przed aktualizacja — a wtedy program by sie nie uruchomil.
     """
     tymczasowy = os.path.dirname(katalog_nowych)
     plik = os.path.join(tymczasowy, "aktualizuj.bat")
+    skrypt = os.path.basename(os.path.abspath(sys.argv[0])) or "awf_kierowcy.py"
     tresc = POMOCNIK.format(
         pid=os.getpid(),
         zrodlo=katalog_nowych,
         docelowy=katalog_programu,
         kopia=os.path.join(tymczasowy, "kopia"),
-        program=sciezka_programu,
+        nazwa_exe=nazwa_programu(),
+        nazwa_skryptu=skrypt,
+        polecenie_zrodel='"%s" "%s"' % (sys.executable, skrypt),
         tymczasowy=tymczasowy,
     )
     with open(plik, "w", encoding="utf-8") as f:

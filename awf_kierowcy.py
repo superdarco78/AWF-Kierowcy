@@ -657,6 +657,7 @@ class App(tk.Tk):
         self.title(f"{self.d.get('nazwa', NAZWA)} — {self.d.get('podtytul', PODTYTUL)}")
         self.geometry("1360x860")
         self.minsize(980, 620)
+        self.otworz_na_caly_ekran()
         self.configure(bg=B["tlo"])
         ik = zasob("ikona.ico")
         if ik and sys.platform == "win32":
@@ -668,6 +669,32 @@ class App(tk.Tk):
         self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
         self.ekran_pin.pack(fill="both", expand=True)
 
+    def otworz_na_caly_ekran(self):
+        """Program otwiera sie zmaksymalizowany. W dyzurce monitor stoi caly
+        czas, wiec nie ma sensu zaczynac od malego okna.
+
+        Sprawdzamy, czy maksymalizacja zadzialala. Niektore srodowiska
+        przyjmuja polecenie i nic nie robia — wtedy ustawiamy rozmiar recznie.
+        """
+        for proba in ("zoomed", "-zoomed", "recznie"):
+            try:
+                if proba == "zoomed":
+                    self.state("zoomed")
+                elif proba == "-zoomed":
+                    self.attributes("-zoomed", True)
+                else:
+                    w = self.winfo_screenwidth()
+                    h = self.winfo_screenheight() - 60
+                    self.geometry(f"{w}x{h}+0+0")
+            except tk.TclError:
+                continue
+            self.update_idletasks()
+            if self.winfo_width() >= self.winfo_screenwidth() * 0.92:
+                return
+        # ostatnia deska ratunku
+        self.geometry(f"{self.winfo_screenwidth()}x"
+                      f"{self.winfo_screenheight() - 60}+0+0")
+
     # ---------------- logowanie ----------------
 
     def _pin_ok(self, pin):
@@ -676,6 +703,10 @@ class App(tk.Tk):
     def _zalogowano(self):
         self.ekran_pin.destroy()
         self._buduj()
+        if self.d.get("pelny_ekran"):
+            self._pelny = True
+            self.attributes("-fullscreen", True)
+            self.bind("<Escape>", lambda _e: self.pelny_ekran())
         self._petla()
         self._sprawdz_aktualizacje()
 
@@ -985,7 +1016,8 @@ class App(tk.Tk):
                       activebackground=B["zloto"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
 
-        self._przyciski(w, [("Zapisz kopię bazy", self.kopia_zapisz, False),
+        self._przyciski(w, [("Co nowego w kolejnych wersjach", self.okno_historii, False),
+                            ("Zapisz kopię bazy", self.kopia_zapisz, False),
                             ("Wczytaj kopię", self.kopia_wczytaj, False),
                             ("Zmień PIN", self.zmien_pin, False),
                             ("Sprawdź aktualizacje", self.sprawdz_recznie, True)])
@@ -1049,8 +1081,12 @@ class App(tk.Tk):
         def krok():
             u = min(1.0, (datetime.now() - t0).total_seconds() * 1000 / czas)
             g = u * u * (3 - 2 * u)
-            self.scena.postep = start + (cel - start) * g
-            self.scena.rysuj()
+            try:
+                self.scena.postep = start + (cel - start) * g
+                self.scena.rysuj()
+            except tk.TclError:
+                self.animacja = None
+                return
             if u < 1:
                 self.animacja = self.after(24, krok)
             else:
@@ -1159,13 +1195,21 @@ class App(tk.Tk):
             and w.get("data") == teraz.strftime("%d.%m.%Y"))
 
     def _petla(self):
-        if self.widoki["podglad"].winfo_ismapped():
-            self.scena.rysuj()
+        # Przy zmianie motywu okno jest przebudowywane. Gdyby odliczanie
+        # trafilo w te chwile, rysowanie dotyczyloby juz usunietego plotna.
+        try:
+            if self.widoki["podglad"].winfo_ismapped():
+                self.scena.rysuj()
+        except tk.TclError:
+            pass
         self.after(1000, self._petla)
 
     # ---------------- narzedzia ----------------
 
     def przelacz_motyw(self):
+        if self.animacja:
+            self.after_cancel(self.animacja)
+            self.animacja = None
         jasny = self.d.get("motyw") != "jasny"
         self.d["motyw"] = "jasny" if jasny else "ciemny"
         zapisz(self.d)
@@ -1180,8 +1224,19 @@ class App(tk.Tk):
         self.b_motyw.configure(text="Tryb ciemny" if jasny else "Tryb jasny")
 
     def pelny_ekran(self):
-        self.attributes("-fullscreen", not self.attributes("-fullscreen"))
-        self.after(200, self.scena.rysuj)
+        """Pelny ekran bez ramki i paska zadan — tryb dyzurki.
+        Wyjscie klawiszem Escape albo tym samym przyciskiem."""
+        wlaczony = getattr(self, "_pelny", False)
+        self._pelny = not wlaczony
+        self.attributes("-fullscreen", not wlaczony)
+        self.d["pelny_ekran"] = not wlaczony
+        zapisz(self.d)
+        if not wlaczony:
+            self.bind("<Escape>", lambda _e: self.pelny_ekran())
+        else:
+            self.unbind("<Escape>")
+            self.otworz_na_caly_ekran()
+        self.after(220, self.scena.rysuj)
 
     def zmien_nazwe(self):
         self.d["nazwa"] = self.pole_nazwa.get().strip() or NAZWA
@@ -1661,6 +1716,96 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
                 "Aktualizacja",
                 f'Dostępna wersja {info["wersja"]}\n\n{info.get("opis","")}',
                 parent=self)
+
+    def okno_historii(self):
+        """Lista wydan z opisem zmian — pobierana z GitHuba."""
+        w = tk.Toplevel(self)
+        w.title("Co nowego w kolejnych wersjach")
+        w.configure(bg=B["tlo"])
+        w.geometry("640x560")
+        w.transient(self)
+
+        gora = tk.Frame(w, bg=B["tlo2"], height=56)
+        gora.pack(fill="x")
+        gora.pack_propagate(False)
+        tk.Label(gora, text="Historia wersji", bg=B["tlo2"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 13)).pack(side="left", padx=18)
+        tk.Label(gora, text="masz " + VER, bg=B["tlo2"], fg=B["zloto"],
+                 font=("Segoe UI Semibold", 10)).pack(side="right", padx=18)
+
+        pole = tk.Text(w, bg=B["tlo"], fg=B["tekst"], relief="flat",
+                       font=("Segoe UI", 10), padx=20, pady=16, wrap="word",
+                       spacing1=2, spacing3=4)
+        pas = ttk.Scrollbar(w, orient="vertical", command=pole.yview)
+        pole.configure(yscrollcommand=pas.set)
+        pas.pack(side="right", fill="y")
+        pole.pack(fill="both", expand=True)
+
+        pole.tag_configure("wersja", font=("Segoe UI Semibold", 13),
+                           foreground=B["akcent"], spacing1=14, spacing3=2)
+        pole.tag_configure("biezaca", font=("Segoe UI Semibold", 13),
+                           foreground=B["zloto"], spacing1=14, spacing3=2)
+        pole.tag_configure("data", font=("Consolas", 9), foreground=B["przygasz"])
+        pole.tag_configure("punkt", lmargin1=14, lmargin2=26)
+        pole.tag_configure("info", foreground=B["przygasz"],
+                           font=("Segoe UI", 10))
+
+        pole.insert("end", "Pobieranie...\n", "info")
+        pole.configure(state="disabled")
+
+        import queue
+        import threading
+        kolejka = queue.Queue()
+
+        def robota():
+            try:
+                import aktualizacje
+                kolejka.put(aktualizacje.historia_wersji())
+            except ImportError:
+                kolejka.put([])
+
+        def odbierz():
+            try:
+                lista = kolejka.get_nowait()
+            except queue.Empty:
+                w.after(150, odbierz)
+                return
+            pole.configure(state="normal")
+            pole.delete("1.0", "end")
+            if not lista:
+                pole.insert("end",
+                            "Nie udało się pobrać historii wersji.\n\n"
+                            "Sprawdź połączenie z internetem albo zajrzyj na\n"
+                            "github.com/superdarco78/AWF-Kierowcy/releases\n",
+                            "info")
+            else:
+                for wyd in lista:
+                    biezaca = wyd["wersja"] == VER
+                    naglowek = "Wersja " + wyd["wersja"]
+                    if biezaca:
+                        naglowek += "   ← ta, którą masz"
+                    pole.insert("end", naglowek + "\n",
+                                "biezaca" if biezaca else "wersja")
+                    if wyd["data"]:
+                        pole.insert("end", wyd["data"] + "\n", "data")
+                    for linia in wyd["opis"].splitlines():
+                        linia = linia.strip()
+                        if not linia or linia.lower().startswith("co nowego"):
+                            continue
+                        pole.insert("end", linia + "\n", "punkt")
+            pole.configure(state="disabled")
+
+        threading.Thread(target=robota, daemon=True).start()
+        odbierz()
+
+        tk.Button(w, text="Zamknij", command=w.destroy, relief="flat", bd=0,
+                  cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                  font=("Segoe UI", 10), padx=18, pady=8).pack(pady=(0, 14))
+
+        w.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - w.winfo_width()) // 2
+        y = self.winfo_rooty() + 60
+        w.geometry(f"+{max(0, x)}+{max(0, y)}")
 
     def sprawdz_recznie(self):
         try:
