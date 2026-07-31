@@ -224,39 +224,37 @@ def rozpakuj(plik_zip):
 # --------------------------------------------------------------------------
 
 POMOCNIK = r"""@echo off
-chcp 65001 >nul
-title AWF KIEROWCY - aktualizacja
+rem Pracuje w ukryciu — nic nie wyswietla. Przebieg trafia do dziennika,
+rem a wynik do pliku, ktory program odczyta po ponownym uruchomieniu.
+set "DZIENNIK={tymczasowy}\aktualizacja.log"
+set "WYNIK={plik_wyniku}"
 
-echo Czekam na zamkniecie programu...
+echo [%date% %time%] start >"%DZIENNIK%"
+
 :czekaj
 tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
     timeout /t 1 /nobreak >nul
     goto czekaj
 )
+echo [%time%] program zamkniety >>"%DZIENNIK%"
 
-echo Zapisuje kopie poprzedniej wersji...
 if exist "{kopia}" rmdir /s /q "{kopia}"
 mkdir "{kopia}" 2>nul
-xcopy "{docelowy}\*" "{kopia}\" /E /I /Y /Q >nul
+xcopy "{docelowy}\*" "{kopia}\" /E /I /Y /Q >>"%DZIENNIK%" 2>&1
+echo [%time%] kopia zapisana >>"%DZIENNIK%"
 
-echo Podmieniam pliki...
-xcopy "{zrodlo}\*" "{docelowy}\" /E /I /Y /Q
+xcopy "{zrodlo}\*" "{docelowy}\" /E /I /Y /Q >>"%DZIENNIK%" 2>&1
 if errorlevel 1 (
-    echo.
-    echo Podmiana sie nie udala - przywracam poprzednia wersje.
-    xcopy "{kopia}\*" "{docelowy}\" /E /I /Y /Q >nul
-    echo Przywrocono poprzednia wersje.
-    pause
+    echo [%time%] podmiana nieudana - przywracam >>"%DZIENNIK%"
+    xcopy "{kopia}\*" "{docelowy}\" /E /I /Y /Q >>"%DZIENNIK%" 2>&1
+    >"%WYNIK%" echo BLAD^|Podmiana plikow sie nie udala. Przywrocono poprzednia wersje.
     exit /b 1
 )
+echo [%time%] pliki podmienione >>"%DZIENNIK%"
 
-echo Uruchamiam program...
-
-rem Szukamy pliku programu zamiast zakladac sciezke.
 set "PROGRAM="
 if exist "{docelowy}\{nazwa_exe}" set "PROGRAM={docelowy}\{nazwa_exe}"
-
 if not defined PROGRAM (
     for %%P in ("{docelowy}\*.exe") do (
         if not defined PROGRAM set "PROGRAM=%%~fP"
@@ -264,26 +262,21 @@ if not defined PROGRAM (
 )
 
 if defined PROGRAM (
+    >"%WYNIK%" echo OK^|{wersja}
+    echo [%time%] uruchamiam %PROGRAM% >>"%DZIENNIK%"
     start "" /D "{docelowy}" "%PROGRAM%"
 ) else (
-    rem Uruchomienie ze zrodel - wtedy potrzebny jest Python.
     if exist "{docelowy}\{nazwa_skryptu}" (
-        start "" /D "{docelowy}" cmd /c "{polecenie_zrodel}"
+        >"%WYNIK%" echo OK^|{wersja}
+        start "" /D "{docelowy}" /min {polecenie_zrodel}
     ) else (
-        echo.
-        echo Nie znaleziono programu w:
-        echo   {docelowy}
-        echo.
-        echo Pliki zostaly podmienione poprawnie - uruchom program
-        echo recznie z tego katalogu albo ze skrotu na pulpicie.
-        echo.
-        echo Okno zamknie sie za 15 sekund.
-        timeout /t 15 /nobreak >nul
+        >"%WYNIK%" echo BLAD^|Nie znaleziono programu po podmianie plikow.
+        echo [%time%] brak programu w {docelowy} >>"%DZIENNIK%"
         exit /b 1
     )
 )
 
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 rmdir /s /q "{tymczasowy}" 2>nul
 exit
 """
@@ -296,7 +289,34 @@ def nazwa_programu():
     return "AWF-Kierowcy.exe"
 
 
-def przygotuj_pomocnika(katalog_nowych, katalog_programu, sciezka_programu=None):
+def plik_wyniku():
+    """Gdzie pomocnik zostawia informacje, jak poszlo."""
+    baza = os.environ.get("APPDATA") or os.path.expanduser("~")
+    kat = os.path.join(baza, "AWF-Kierowcy")
+    os.makedirs(kat, exist_ok=True)
+    return os.path.join(kat, "wynik-aktualizacji.txt")
+
+
+def odczytaj_wynik():
+    """Zwraca (rodzaj, tresc) z ostatniej aktualizacji albo None.
+    Plik jest kasowany po odczycie, zeby nie pokazywac tego dwa razy."""
+    p = plik_wyniku()
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            linia = f.read().strip()
+        os.remove(p)
+    except OSError:
+        return None
+    if not linia:
+        return None
+    rodzaj, _, tresc = linia.partition("|")
+    return rodzaj.strip(), tresc.strip()
+
+
+def przygotuj_pomocnika(katalog_nowych, katalog_programu, sciezka_programu=None,
+                        wersja=""):
     """Tworzy plik wsadowy, ktory podmieni pliki po zamknieciu programu.
 
     Plik sam szuka programu w katalogu docelowym zamiast zakladac sciezke.
@@ -315,17 +335,64 @@ def przygotuj_pomocnika(katalog_nowych, katalog_programu, sciezka_programu=None)
         nazwa_skryptu=skrypt,
         polecenie_zrodel='"%s" "%s"' % (sys.executable, skrypt),
         tymczasowy=tymczasowy,
+        plik_wyniku=plik_wyniku(),
+        wersja=wersja,
     )
     with open(plik, "w", encoding="utf-8") as f:
         f.write(tresc)
     return plik
 
 
+def przygotuj_uruchamiacz(plik_bat):
+    """Maly skrypt systemowy, ktory odpala plik wsadowy zupelnie niewidocznie.
+
+    Samo `cmd /c` potrafi mignac czarnym oknem na ulamek sekundy.
+    Windows Script Host uruchamia proces z oknem ukrytym od poczatku,
+    wiec nie widac niczego.
+    """
+    sciezka = os.path.join(os.path.dirname(plik_bat), "start.vbs")
+    tresc = (
+        'Set powloka = CreateObject("WScript.Shell")\r\n'
+        'powloka.Run """%s""", 0, False\r\n' % plik_bat
+    )
+    with open(sciezka, "w", encoding="utf-8") as f:
+        f.write(tresc)
+    return sciezka
+
+
 def uruchom_pomocnika(plik_bat):
-    """Odpala pomocnika i zwraca sterowanie. Program powinien zaraz sie zamknac."""
+    """Odpala pomocnika w ukryciu i zwraca sterowanie.
+
+    Bez okna konsoli — uzytkownik ma zobaczyc tylko to, ze program
+    zamknal sie i po chwili wrocil w nowej wersji.
+    """
+    znaczniki = 0
+    for nazwa in ("CREATE_NO_WINDOW", "DETACHED_PROCESS"):
+        znaczniki |= getattr(subprocess, nazwa, 0)
+    ukryj = None
+    if hasattr(subprocess, "STARTUPINFO"):
+        ukryj = subprocess.STARTUPINFO()
+        ukryj.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+        ukryj.wShowWindow = 0            # SW_HIDE
+
+    if sys.platform == "win32":
+        try:
+            vbs = przygotuj_uruchamiacz(plik_bat)
+            subprocess.Popen(
+                ["wscript.exe", "//B", "//Nologo", vbs],
+                creationflags=znaczniki, startupinfo=ukryj,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                close_fds=True)
+            return
+        except OSError:
+            pass          # gdy Windows Script Host jest wylaczony
+
     subprocess.Popen(
-        ["cmd", "/c", "start", "", plik_bat],
-        creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+        ["cmd", "/c", plik_bat],
+        creationflags=znaczniki,
+        startupinfo=ukryj,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         close_fds=True,
     )
 

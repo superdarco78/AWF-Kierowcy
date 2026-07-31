@@ -121,6 +121,58 @@ def ustaw_katalog_danych(kat):
 
 def sciezka_bazy():
     return os.path.join(katalog_danych(), "baza.json")
+
+
+def pierwsze_uruchomienie():
+    """Czy to nowa instalacja — nie ma ani wskazania, ani lokalnej bazy."""
+    return (not os.path.exists(plik_wskazania())
+            and not os.path.exists(os.path.join(katalog_domyslny(), "baza.json")))
+
+
+def szukaj_bazy_w_chmurze():
+    """Szuka bazy w katalogach synchronizowanych — OneDrive, Dokumenty, Pulpit.
+
+    Zwraca liste znalezionych plikow, od najswiezszego. Nie wchodzi glebiej
+    niz trzy poziomy, zeby nie przeszukiwac calego dysku.
+    """
+    dom = os.path.expanduser("~")
+    korzenie = []
+    for wpis in os.listdir(dom) if os.path.isdir(dom) else []:
+        pelna = os.path.join(dom, wpis)
+        if os.path.isdir(pelna) and wpis.lower().startswith("onedrive"):
+            korzenie.append(pelna)
+    for nazwa in ("Documents", "Dokumenty", "Desktop", "Pulpit"):
+        p = os.path.join(dom, nazwa)
+        if os.path.isdir(p):
+            korzenie.append(p)
+
+    znalezione = []
+    for korzen in korzenie:
+        for katalog, podkatalogi, pliki in os.walk(korzen):
+            glebokosc = katalog[len(korzen):].count(os.sep)
+            if glebokosc >= 3:
+                podkatalogi[:] = []
+                continue
+            # pomijamy katalogi systemowe i tymczasowe
+            podkatalogi[:] = [k for k in podkatalogi
+                              if not k.startswith((".", "$", "~"))]
+            if "baza.json" in pliki:
+                sciezka = os.path.join(katalog, "baza.json")
+                try:
+                    with open(sciezka, encoding="utf-8") as f:
+                        dane = json.load(f)
+                    if isinstance(dane, dict) and "kierowcy" in dane:
+                        znalezione.append({
+                            "sciezka": sciezka,
+                            "katalog": katalog,
+                            "kierowcow": len(dane.get("kierowcy", [])),
+                            "wjazdow": len(dane.get("historia", [])),
+                            "zmieniony": os.path.getmtime(sciezka),
+                        })
+                except (OSError, ValueError, json.JSONDecodeError):
+                    pass
+    znalezione.sort(key=lambda x: -x["zmieniony"])
+    return znalezione
 SOL = "awf-kierowcy-2026"
 
 
@@ -132,6 +184,7 @@ def domyslna_baza():
     return {
         "pin": zakoduj_pin("1234"),
         "motyw": "ciemny",
+        "start_pelny": False,
         "nazwa": NAZWA,
         "podtytul": PODTYTUL,
         "obiekty": [
@@ -374,7 +427,13 @@ class Scena(tk.Canvas):
     # ---------------- rysowanie ----------------
 
     def rysuj(self):
-        self.delete("all")
+        # Plotno moze zniknac w trakcie przebudowy okna (zmiana motywu).
+        # Wtedy po prostu nie rysujemy — nastepne odliczanie trafi juz
+        # w nowe plotno.
+        try:
+            self.delete("all")
+        except tk.TclError:
+            return
         W = max(self.winfo_width(), 640)
         H = max(self.winfo_height(), 380)
         if self.typ == "slupki" and self.material:
@@ -645,6 +704,7 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        self._nowa_instalacja = pierwsze_uruchomienie()
         self.d = wczytaj()
         zastosuj_motyw(self.d.get("motyw") == "jasny")
         self.obiekt = 0
@@ -656,8 +716,15 @@ class App(tk.Tk):
 
         self.title(f"{self.d.get('nazwa', NAZWA)} — {self.d.get('podtytul', PODTYTUL)}")
         self.geometry("1360x860")
-        self.minsize(980, 620)
+        self.minsize(min(980, self.winfo_screenwidth() - 40),
+                     min(620, self.winfo_screenheight() - 80))
         self.otworz_na_caly_ekran()
+        self.after(300, self._dopilnuj_maksymalizacji)
+        self.after(900, self._dopilnuj_maksymalizacji)
+        # W dyzurce monitor stoi caly czas, wiec program otwiera sie
+        # od razu na pelnym ekranie. Wyjscie klawiszem Escape albo F11.
+        if self.d.get("start_pelny", False):
+            self.after(120, self._wlacz_pelny_start)
         self.configure(bg=B["tlo"])
         ik = zasob("ikona.ico")
         if ik and sys.platform == "win32":
@@ -669,6 +736,22 @@ class App(tk.Tk):
         self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
         self.ekran_pin.pack(fill="both", expand=True)
 
+        self.bind("<F11>", lambda _e: self.pelny_ekran())
+        self.bind("<Escape>", self._escape)
+
+    def _escape(self, _e=None):
+        """Escape wychodzi z pelnego ekranu, ale nie zamyka programu."""
+        if getattr(self, "_pelny", False):
+            self.pelny_ekran()
+
+    def _wlacz_pelny_start(self):
+        try:
+            self.attributes("-fullscreen", True)
+            self._pelny = True
+            self.d["pelny_ekran"] = True
+        except tk.TclError:
+            pass
+
     def otworz_na_caly_ekran(self):
         """Program otwiera sie zmaksymalizowany. W dyzurce monitor stoi caly
         czas, wiec nie ma sensu zaczynac od malego okna.
@@ -676,6 +759,7 @@ class App(tk.Tk):
         Sprawdzamy, czy maksymalizacja zadzialala. Niektore srodowiska
         przyjmuja polecenie i nic nie robia — wtedy ustawiamy rozmiar recznie.
         """
+        self.update_idletasks()
         for proba in ("zoomed", "-zoomed", "recznie"):
             try:
                 if proba == "zoomed":
@@ -689,25 +773,170 @@ class App(tk.Tk):
             except tk.TclError:
                 continue
             self.update_idletasks()
-            if self.winfo_width() >= self.winfo_screenwidth() * 0.92:
+            # sprawdzamy obie strony — samo dopasowanie szerokosci nie wystarcza,
+            # okno moze byc wtedy wyzsze niz monitor
+            if (self.winfo_width() >= self.winfo_screenwidth() * 0.92
+                    and self.winfo_height() <= self.winfo_screenheight()):
                 return
         # ostatnia deska ratunku
         self.geometry(f"{self.winfo_screenwidth()}x"
                       f"{self.winfo_screenheight() - 60}+0+0")
+
+    def _dopilnuj_maksymalizacji(self):
+        """Niektore okiennice maksymalizuja dopiero po pokazaniu okna.
+        Sprawdzamy jeszcze raz po chwili i poprawiamy, gdy trzeba."""
+        try:
+            if getattr(self, "_pelny", False):
+                return
+            za_waskie = self.winfo_width() < self.winfo_screenwidth() * 0.92
+            za_wysokie = self.winfo_height() > self.winfo_screenheight()
+            if za_waskie or za_wysokie:
+                self.otworz_na_caly_ekran()
+        except tk.TclError:
+            pass
 
     # ---------------- logowanie ----------------
 
     def _pin_ok(self, pin):
         return zakoduj_pin(pin) == self.d.get("pin")
 
+    def _pierwsze_uruchomienie(self):
+        """Nowa instalacja — pytamy, skad wziac dane, zamiast kazac
+        wpisywac wszystko od nowa."""
+        znalezione = szukaj_bazy_w_chmurze()
+
+        w = tk.Toplevel(self)
+        w.title("Pierwsze uruchomienie")
+        w.configure(bg=B["tlo2"])
+        w.resizable(False, False)
+        w.transient(self)
+        w.grab_set()
+        r = tk.Frame(w, bg=B["tlo2"], padx=30, pady=26)
+        r.pack()
+
+        tk.Label(r, text="Skąd wziąć dane?", bg=B["tlo2"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 15)).pack(anchor="w")
+        tk.Label(r, text="To pierwsze uruchomienie na tym komputerze.",
+                 bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(3, 18))
+
+        def zamknij_i_odswiez():
+            self.d = wczytaj()
+            try:
+                self.odswiez_kierowcow()
+                self.odswiez_historie()
+                self.lbl_katalog.configure(text=katalog_danych())
+            except (AttributeError, tk.TclError):
+                pass
+            w.destroy()
+
+        def uzyj(wpis):
+            ustaw_katalog_danych(wpis["katalog"])
+            self.log("baza z: " + wpis["katalog"])
+            zamknij_i_odswiez()
+
+        if znalezione:
+            tk.Label(r, text="ZNALEZIONE BAZY", bg=B["tlo2"], fg=B["zloto"],
+                     font=("Segoe UI Semibold", 8)).pack(anchor="w",
+                                                         pady=(0, 6))
+            for wpis in znalezione[:4]:
+                karta = tk.Frame(r, bg=B["tlo3"], padx=14, pady=11)
+                karta.pack(fill="x", pady=(0, 7))
+                opis = (f'{wpis["kierowcow"]} kierowców, '
+                        f'{wpis["wjazdow"]} wpisów historii')
+                tk.Label(karta, text=opis, bg=B["tlo3"], fg=B["tekst"],
+                         font=("Segoe UI Semibold", 10),
+                         anchor="w").pack(anchor="w")
+                sciezka = wpis["katalog"]
+                if len(sciezka) > 62:
+                    sciezka = "..." + sciezka[-59:]
+                tk.Label(karta, text=sciezka, bg=B["tlo3"], fg=B["przygasz"],
+                         font=("Consolas", 8), anchor="w").pack(anchor="w")
+                tk.Label(karta, text="zmieniona "
+                         + datetime.fromtimestamp(wpis["zmieniony"]).strftime(
+                             "%d.%m.%Y %H:%M"),
+                         bg=B["tlo3"], fg=B["przygasz"],
+                         font=("Segoe UI", 8), anchor="w").pack(anchor="w")
+                tk.Button(karta, text="Użyj tej bazy",
+                          command=lambda x=wpis: uzyj(x), relief="flat", bd=0,
+                          cursor="hand2", bg=B["akcent"], fg=B["naAkcencie"],
+                          font=("Segoe UI Semibold", 9), padx=14, pady=6
+                          ).pack(anchor="w", pady=(8, 0))
+        else:
+            tk.Label(r, text="Nie znalazłem bazy w OneDrive ani w Dokumentach.",
+                     bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 10),
+                     wraplength=440, justify="left").pack(anchor="w",
+                                                          pady=(0, 14))
+
+        tk.Label(r, text="INNE MOŻLIWOŚCI", bg=B["tlo2"], fg=B["zloto"],
+                 font=("Segoe UI Semibold", 8)).pack(anchor="w",
+                                                     pady=(14, 6))
+
+        def wskaz():
+            from tkinter import filedialog
+            start = os.path.join(os.path.expanduser("~"), "OneDrive")
+            if not os.path.isdir(start):
+                start = os.path.expanduser("~")
+            kat = filedialog.askdirectory(
+                parent=w, initialdir=start,
+                title="Wskaż katalog z bazą (albo pusty, na nową)")
+            if kat:
+                ustaw_katalog_danych(kat)
+                self.log("wskazano katalog: " + kat)
+                zamknij_i_odswiez()
+
+        def z_kopii():
+            from tkinter import filedialog
+            plik = filedialog.askopenfilename(
+                parent=w, filetypes=[("Kopia bazy", "*.json")],
+                title="Wczytaj kopię bazy")
+            if not plik:
+                return
+            try:
+                with open(plik, encoding="utf-8") as f:
+                    nowa = json.load(f)
+                if "kierowcy" not in nowa:
+                    raise ValueError("to nie jest kopia bazy")
+                zapisz(nowa)
+                self.log("wczytano kopię: " + os.path.basename(plik))
+                zamknij_i_odswiez()
+            except (OSError, ValueError, json.JSONDecodeError) as e:
+                messagebox.showwarning("Kopia", "Nie udało się wczytać:\n"
+                                       + str(e), parent=w)
+
+        for tekst, akcja in (("Wskaż katalog ręcznie", wskaz),
+                             ("Wczytaj z pliku kopii", z_kopii),
+                             ("Zacznij od pustej bazy", zamknij_i_odswiez)):
+            tk.Button(r, text=tekst, command=akcja, relief="flat", bd=0,
+                      cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                      font=("Segoe UI", 10), padx=16, pady=8, anchor="w"
+                      ).pack(fill="x", pady=(0, 6))
+
+        tk.Label(r, text="Możesz to zmienić później w Ustawieniach.",
+                 bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(12, 0))
+
+        w.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - w.winfo_width()) // 2
+        y = self.winfo_rooty() + 60
+        w.geometry(f"+{max(0, x)}+{max(0, y)}")
+        return w
+
     def _zalogowano(self):
         self.ekran_pin.destroy()
         self._buduj()
-        if self.d.get("pelny_ekran"):
-            self._pelny = True
-            self.attributes("-fullscreen", True)
+        # Po zbudowaniu okna wymuszamy rozmiar jeszcze raz — dodanie
+        # widgetow potrafi zmienic geometrie i okno „schodzi” z ekranu.
+        if self.d.get("start_pelny", False):
+            self._wlacz_pelny_start()
             self.bind("<Escape>", lambda _e: self.pelny_ekran())
+        elif not getattr(self, "_pelny", False):
+            self.otworz_na_caly_ekran()
+            self.after(250, self._dopilnuj_maksymalizacji)
+        self._pokaz_wynik_aktualizacji()
         self._petla()
+        if self._nowa_instalacja:
+            self.after(400, self._pierwsze_uruchomienie)
         self._sprawdz_aktualizacje()
 
     def zablokuj(self):
@@ -767,7 +996,7 @@ class App(tk.Tk):
         narz = tk.Frame(self.gora, bg=B["tlo2"])
         narz.pack(side="right", padx=(0, 14))
         for tekst, akcja in (("Tryb jasny", self.przelacz_motyw),
-                             ("Pełny ekran", self.pelny_ekran),
+                             ("Okno / pełny ekran  ·  F11", self.pelny_ekran),
                              ("Zablokuj", self.zablokuj)):
             b = tk.Label(narz, text=tekst, bg=B["tlo3"], fg=B["tekst2"],
                          font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2")
@@ -1015,6 +1244,22 @@ class App(tk.Tk):
                       fg=B["naAkcencie"] if glowny else B["tekst"],
                       activebackground=B["zloto"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
+
+        v_pelny = tk.BooleanVar(value=self.d.get("start_pelny", False))
+
+        def zmien_start():
+            self.d["start_pelny"] = v_pelny.get()
+            zapisz(self.d)
+            self.log("start na pełnym ekranie: "
+                     + ("tak" if v_pelny.get() else "nie"))
+
+        tk.Checkbutton(w, text="Otwieraj bez ramki, na cały ekran "
+                               "(tryb dyżurki)  ·  wyjście klawiszem Escape",
+                       variable=v_pelny, command=zmien_start, bg=B["tlo"],
+                       fg=B["tekst"], selectcolor=B["tlo3"],
+                       activebackground=B["tlo"], activeforeground=B["tekst"],
+                       font=("Segoe UI", 10)).pack(anchor="w", padx=24,
+                                                   pady=(0, 14))
 
         self._przyciski(w, [("Co nowego w kolejnych wersjach", self.okno_historii, False),
                             ("Zapisz kopię bazy", self.kopia_zapisz, False),
@@ -1674,6 +1919,50 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         self.log(f"usunięto {przed - len(self.d['historia'])} starych wpisów")
 
     # ---------------- aktualizacje ----------------
+
+    def _pokaz_wynik_aktualizacji(self):
+        """Po aktualizacji program wraca sam. Tu melduje, jak poszlo —
+        okno pomocnika jest ukryte, wiec to jedyna informacja zwrotna."""
+        try:
+            import aktualizacje
+        except ImportError:
+            return
+        wynik = aktualizacje.odczytaj_wynik()
+        if not wynik:
+            return
+        rodzaj, tresc = wynik
+        if rodzaj == "OK":
+            self.log(f"zaktualizowano do wersji {tresc or VER}")
+            nowa = tresc or VER
+            self.after(600, lambda: self._pasek_informacyjny(
+                f"Zaktualizowano do wersji {nowa}", B["ok"]))
+        else:
+            self.log("aktualizacja nieudana: " + tresc)
+            self.after(600, lambda: messagebox.showwarning(
+                "Aktualizacja", tresc + "\n\nProgram działa w poprzedniej "
+                "wersji.", parent=self))
+
+    def _pasek_informacyjny(self, tekst, kolor):
+        """Waski pasek u gory, znika sam po kilku sekundach."""
+        pasek = tk.Frame(self, bg=kolor, height=34)
+        pasek.pack(fill="x", before=self.tresc)
+        pasek.pack_propagate(False)
+        tk.Label(pasek, text=tekst, bg=kolor, fg=B["naAkcencie"],
+                 font=("Segoe UI Semibold", 10)).pack(side="left", padx=18)
+        tk.Label(pasek, text="✕", bg=kolor, fg=B["naAkcencie"],
+                 font=("Segoe UI", 11), cursor="hand2", padx=16
+                 ).pack(side="right")
+
+        def zamknij(_e=None):
+            try:
+                pasek.destroy()
+                self.scena.rysuj()
+            except tk.TclError:
+                pass
+        for dziecko in pasek.winfo_children():
+            dziecko.bind("<Button-1>", zamknij)
+        pasek.bind("<Button-1>", zamknij)
+        self.after(8000, zamknij)
 
     def _sprawdz_aktualizacje(self):
         """Sprawdzenie przy starcie — po cichu. Gdy nie ma nowszej wersji

@@ -97,7 +97,7 @@ def okno_aktualizacji(rodzic, info, kolory=None):
                 bat = aktualizacje.przygotuj_pomocnika(
                     nowe,
                     aktualizacje.katalog_programu(),
-                    aktualizacje.sciezka_programu())
+                    wersja=info.get("wersja", ""))
                 kolejka.put(("gotowe", bat))
             except Exception as blad:
                 kolejka.put(("blad", str(blad)))
@@ -124,7 +124,8 @@ def okno_aktualizacji(rodzic, info, kolory=None):
         w.after(120, odbieraj)
 
     def zakoncz(bat):
-        stan.configure(text="Zamykam program i podmieniam pliki...")
+        stan.configure(text="Zamykam program — wrócę za chwilę "
+                            "w nowej wersji...")
         w.update_idletasks()
         aktualizacje.uruchom_pomocnika(bat)
         rodzic.after(400, rodzic.destroy)
