@@ -24,15 +24,10 @@ import aktualizacje
 
 def okno_aktualizacji(rodzic, info, kolory=None):
     """Pokazuje okno z opisem aktualizacji i obsluguje pobranie."""
-    # Te same barwy uczelni co w programie glownym: zielen #036744
-    # i zloto #b9975b. Napis na zieleni jest bialy — zielen uczelni jest
-    # za ciemna, zeby czytac na niej ciemny tekst.
     K = kolory or {
-        "tlo": "#011c12", "tlo2": "#01291b", "linia": "#023c27",
-        "tekst": "#ebf3f0", "przygaszony": "#86b6a5",
-        "akcent": "#036744", "akcent2": "#024a31",
-        "akcentTekst": "#599b84",
-        "zloto": "#b9975b", "naAkcencie": "#ffffff",
+        "tlo": "#0d2419", "tlo2": "#143024", "linia": "#1f4633",
+        "tekst": "#e9f2ec", "przygaszony": "#7d998a",
+        "akcent": "#00a86b", "zloto": "#c9a86e", "naAkcencie": "#04220e",
     }
 
     w = tk.Toplevel(rodzic)
@@ -64,13 +59,7 @@ def okno_aktualizacji(rodzic, info, kolory=None):
                     font=("Segoe UI", 9))
     stan.pack(anchor="w", pady=(12, 4))
 
-    # Wlasny pasek zamiast ttk.Progressbar. Ten drugi rysuje sie stylem
-    # systemu — na Windows wychodzi bialo-niebieski, obcy wobec barw uczelni
-    # i nie da sie go przemalowac bez grzebania w stylach ttk.
-    pasek = tk.Frame(ramka, bg=K["linia"], height=8)
-    pasek.pack_propagate(False)
-    wypelnienie = tk.Frame(pasek, bg=K.get("akcentTekst", K["akcent"]))
-    wypelnienie.place(x=0, y=0, relwidth=0, relheight=1)
+    pasek = ttk.Progressbar(ramka, length=460, mode="determinate", maximum=100)
 
     guziki = tk.Frame(ramka, bg=K["tlo"])
     guziki.pack(fill="x", pady=(14, 0))
@@ -82,8 +71,7 @@ def okno_aktualizacji(rodzic, info, kolory=None):
             padx=18, pady=9,
             bg=K["akcent"] if glowny else K["tlo2"],
             fg=K["naAkcencie"] if glowny else K["tekst"],
-            activebackground=K.get("akcent2", K["akcent"]) if glowny
-            else K["linia"],
+            activebackground=K["zloto"] if glowny else K["linia"],
             activeforeground=K["naAkcencie"] if glowny else K["tekst"])
 
     def pozniej():
@@ -97,7 +85,7 @@ def okno_aktualizacji(rodzic, info, kolory=None):
     def instaluj():
         b_inst.configure(state="disabled")
         b_poz.configure(state="disabled")
-        pasek.pack(fill="x", pady=(2, 6))
+        pasek.pack(fill="x", pady=(0, 6))
         stan.configure(text="Pobieranie...")
 
         def robota():
@@ -122,10 +110,7 @@ def okno_aktualizacji(rodzic, info, kolory=None):
             while True:
                 rodzaj, tresc = kolejka.get_nowait()
                 if rodzaj == "postep":
-                    wypelnienie.place_configure(
-                        relwidth=max(0.0, min(1.0, tresc)))
-                    stan.configure(
-                        text=f"Pobieranie... {round(tresc * 100)}%")
+                    pasek.configure(value=round(tresc * 100))
                 elif rodzaj == "etap":
                     stan.configure(text=tresc)
                 elif rodzaj == "gotowe":

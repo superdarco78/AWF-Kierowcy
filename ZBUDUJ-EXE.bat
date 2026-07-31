@@ -35,11 +35,21 @@ python -m PyInstaller --onedir --windowed --clean --noupx ^
   --name "AWF-Kierowcy" ^
   --icon ikona.ico ^
   --manifest manifest.xml ^
-  --add-data "*.png;." ^
-  --add-data "*.jpg;." ^
-  --add-data "*.ico;." ^
-  --add-data "*.json;." ^
-  --hidden-import zasoby_wbudowane ^
+  --hidden-import tlo_wbudowane ^
+  --add-data "ikona.ico;." ^
+  --add-data "godlo-awf.png;." ^
+  --add-data "logowanie-tlo.jpg;." ^
+  --add-data "logo-awf.png;." ^
+  --add-data "kiosk-tlo.jpg;." ^
+  --add-data "kiosk-uklad.json;." ^
+  --add-data "kiosk-korpus1.png;." ^
+  --add-data "kiosk-korpus2.png;." ^
+  --add-data "kiosk-korpus3.png;." ^
+  --add-data "kiosk-korpus4.png;." ^
+  --add-data "kiosk-plyta1.png;." ^
+  --add-data "kiosk-plyta2.png;." ^
+  --add-data "kiosk-plyta3.png;." ^
+  --add-data "kiosk-plyta4.png;." ^
   --log-level WARN ^
   awf_kierowcy.py
 if errorlevel 1 (
