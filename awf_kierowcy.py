@@ -16,12 +16,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 try:
-    from PIL import Image, ImageTk, ImageDraw, ImageFilter
+    from PIL import (Image, ImageTk, ImageDraw, ImageFilter,
+                 ImageFont, ImageEnhance)
 except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "6.3.1"
+VER = "6.1"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -35,14 +36,11 @@ DNI_PELNE = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek",
 # ==========================================================================
 
 # Obie palety wyprowadzone z dwoch barw uczelni: zielen #036744 i zloto
-# #b9975b. Tla to ta sama zielen zmieszana z czernia, napisy — z biela,
-# wiec caly program trzyma sie jednej rodziny barw.
+# #b9975b. Tla to ta sama zielen zmieszana z czernia, napisy — z biela.
 #
-# Zielen uczelni jest ciemna, dlatego sluzy jako WYPELNIENIE z bialym
-# napisem (kontrast 6,9). Jako napis na ciemnym tle bylaby nieczytelna
-# (2,6), wiec do tego jest osobny klucz "akcentTekst" — ta sama zielen
-# rozjasniona biela. Zloto odwrotnie: na ciemnym tle wlasne #b9975b,
-# na bialym przyciemnione, bo jasne zloto na bieli ma kontrast 2,8.
+# Zielen uczelni jest ciemna, wiec sluzy jako WYPELNIENIE z bialym napisem
+# (kontrast 6,9). Jako napis na ciemnym tle mialaby 2,6, czyli bylaby
+# nieczytelna — do tego jest "akcentTekst", ta sama zielen rozjasniona.
 
 CIEMNY = {
     "tlo": "#001309", "tlo2": "#011c12", "tlo3": "#01291b", "linia": "#023c27",
@@ -79,80 +77,14 @@ def zastosuj_motyw(jasny):
 # ==========================================================================
 
 def zasob(nazwa):
-    """Sciezka do pliku dolaczonego do programu.
-
-    Szuka po kolei we wszystkich miejscach, w ktorych PyInstaller potrafi
-    zostawic dolaczone pliki — inaczej po aktualizacji zdjecie tla potrafi
-    zniknac tylko dlatego, ze wyladowalo w innym podkatalogu.
-    """
-    miejsca = []
+    """Sciezka do pliku dolaczonego do programu — inaczej ze zrodel,
+    inaczej po spakowaniu PyInstallerem."""
     if hasattr(sys, "_MEIPASS"):
-        miejsca.append(sys._MEIPASS)
-    if getattr(sys, "frozen", False):
-        obok = os.path.dirname(os.path.abspath(sys.executable))
-        miejsca += [obok, os.path.join(obok, "_internal")]
-    miejsca.append(os.path.dirname(os.path.abspath(__file__)))
-    for m in miejsca:
-        p = os.path.join(m, nazwa)
+        p = os.path.join(sys._MEIPASS, nazwa)
         if os.path.exists(p):
             return p
-    return None
-
-
-def otworz_obraz(nazwa):
-    """Obraz do wyswietlenia — najpierw plik obok programu, potem wbudowany.
-
-    Kolejnosc jest wazna: plik ma pierwszenstwo, zeby dalo sie podmienic
-    zdjecie tla bez przebudowywania programu. Gdy pliku nie ma — a po
-    spakowaniu PyInstallerem latwo o to, bo kazdy plik trzeba osobno wpisac
-    na liste — program siega po wersje wpisana w kod i dziala tak samo.
-    """
-    plik = zasob(nazwa)
-    if plik:
-        try:
-            return Image.open(plik)
-        except (OSError, ValueError):
-            pass                      # uszkodzony plik — bierzemy wbudowany
-    try:
-        import io
-        import zasoby_wbudowane
-        dane = zasoby_wbudowane.dane(nazwa)
-        if dane:
-            return Image.open(io.BytesIO(dane))
-    except (ImportError, OSError, ValueError):
-        pass
-    return None
-
-
-def rgb_barwy(hex_barwy):
-    """'#011c12' -> (1, 28, 18)"""
-    h = hex_barwy.lstrip("#")
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def godlo_okragle(rozmiar, tlo_hex):
-    """Godlo wyciete w kolo, sklejone z barwa tla.
-
-    Godlo w pliku jest kwadratem — zielone naroza odcinaly sie od ciemnej
-    karty jako jasniejsza plama. Kolo wycinamy maska rysowana w czterokrotnym
-    powiekszeniu i zmniejszana, bo tylko wtedy krawedz jest gladka.
-
-    Sklejenie z tlem robimy tutaj, a nie zostawiamy tkinterowi: przy
-    przezroczystych krawedziach potrafi on zostawic czarna obwodke.
-    """
-    zrodlo = otworz_obraz("godlo-awf.png")
-    if zrodlo is None:
-        return None
-    obraz = zrodlo.convert("RGBA").resize((rozmiar, rozmiar), Image.LANCZOS)
-    maska = Image.new("L", (rozmiar * 4, rozmiar * 4), 0)
-    ImageDraw.Draw(maska).ellipse((0, 0, rozmiar * 4 - 1, rozmiar * 4 - 1),
-                                  fill=255)
-    maska = maska.resize((rozmiar, rozmiar), Image.LANCZOS)
-    kolo = Image.new("RGBA", (rozmiar, rozmiar), (0, 0, 0, 0))
-    kolo.paste(obraz, (0, 0), maska)
-    podklad = Image.new("RGBA", (rozmiar, rozmiar),
-                        rgb_barwy(tlo_hex) + (255,))
-    return Image.alpha_composite(podklad, kolo).convert("RGB")
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), nazwa)
+    return p if os.path.exists(p) else None
 
 
 def katalog_domyslny():
@@ -808,13 +740,22 @@ def okno_tresci(rodzic, tytul, wiersze, szerokosc=520):
 
 
 class EkranPin(tk.Frame):
-    """Ekran logowania: zdjecie w tle i klawiatura ze zwyklych przyciskow.
+    """Ekran logowania rysowany jako obraz.
 
-    Swiadomie bez skladania calego ekranu w obraz — zwykle przyciski
-    dzialaja wszedzie, a zdjecie jest tylko tlem pod nimi.
+    Tkinter nie umie zaokraglonych narozy, cieni ani przejsc tonalnych.
+    Karta i klawisze sa wiec rysowane biblioteka obrazow i skladane w jeden
+    obrazek, a klikniecie rozpoznajemy po wspolrzednych. Dzieki temu wyglad
+    na ekranie jest dokladnie taki, jak na projekcie — co do piksela.
+
+    Barwy: zielen uczelni #036744 jako wypelnienie, zloto #b9975b na klawisz
+    zatwierdzenia i obwodki.
     """
 
     KLAWISZE = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"]
+    KW, KH, PROM = 440, 700, 22
+    KLW, KLH, ODST, KPROM = 118, 68, 13, 16
+    SY = 276
+    MARG = 70          # miejsce na cien dookola karty
 
     def __init__(self, rodzic, sprawdz, po_zalogowaniu):
         super().__init__(rodzic, bg=B["tlo"])
@@ -822,158 +763,372 @@ class EkranPin(tk.Frame):
         self.po_zalogowaniu = po_zalogowaniu
         self.wpisany = ""
         self.proby = 0
+        self.info = ""
+        self.zablokowany = False
+        self.blokada_aktualizacji = False
+        self.postep_stan = None          # (ulamek, tekst) albo None
+        self.wersja_napis = "v" + VER
+        self._wcisniety = None
         self._tlo_tk = None
+        self._karta_tk = None
         self._rozmiar = None
+        self._skala = 1.0
 
-        self.tlo = tk.Label(self, bd=0, bg=B["tlo"])
+        self.tlo = tk.Label(self, bd=0, bg=B["tlo"], anchor="center")
         self.tlo.place(x=0, y=0, relwidth=1, relheight=1)
+
+        self.plotno = tk.Label(self, bd=0, bg=B["tlo"])
+        self.plotno.place(relx=0.5, rely=0.5, anchor="center")
+        self.plotno.bind("<ButtonPress-1>", self._wcisnij)
+        self.plotno.bind("<ButtonRelease-1>", self._pusc)
+
+        self.rog = tk.Label(self, bd=0, bg=B["tlo2"], fg=B["zloto"],
+                            font=("Segoe UI", 9), padx=10, pady=4,
+                            text=self.wersja_napis)
+        self.rog.place(relx=0.99, rely=0.98, anchor="se")
+
         self.bind("<Configure>", self._na_zmiane)
-
-        self.karta = tk.Frame(self, bg=B["tlo2"], highlightthickness=1,
-                              highlightbackground=B["zloto2"])
-        self.karta.place(relx=0.5, rely=0.5, anchor="center")
-        self._buduj_karte()
-
-        # Numer wersji i stan aktualizacji — widoczne jeszcze przed PIN-em.
-        # Dyzurny ma wiedziec, co ma zainstalowane, bez logowania sie.
-        self.stopka = tk.Label(self, text="v" + VER, bg=B["tlo2"],
-                               fg=B["zloto"], font=("Segoe UI", 9),
-                               padx=10, pady=4)
-        self.stopka.place(relx=0.99, rely=0.98, anchor="se")
-
+        rodzic.bind("<Configure>", self._na_zmiane, add="+")
+        self._pilnuj(0)
         self.bind_all("<Key>", self._klawisz)
+        self.after(60, self.rysuj)
 
-    # ---------------- tlo ----------------
+    # ------------------------------------------------------------------
+    # czcionki i ksztalty
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _czcionka(px, gruby=False):
+        """Segoe UI na Windows, DejaVu gdzie indziej."""
+        okno = os.environ.get("WINDIR", r"C:\Windows")
+        drogi = ([os.path.join(okno, "Fonts", "segoeuib.ttf"),
+                  os.path.join(okno, "Fonts", "seguisb.ttf"),
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+                 if gruby else
+                 [os.path.join(okno, "Fonts", "segoeui.ttf"),
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"])
+        for d in drogi:
+            try:
+                return ImageFont.truetype(d, px)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+
+    @staticmethod
+    def _maska(rozm, prom):
+        m = Image.new("L", rozm, 0)
+        ImageDraw.Draw(m).rounded_rectangle(
+            [0, 0, rozm[0] - 1, rozm[1] - 1], radius=prom, fill=255)
+        return m
+
+    @classmethod
+    def _przejscie(cls, rozm, gora, dol, prom):
+        """Prostokat z pionowym przejsciem tonalnym i zaokraglonymi rogami."""
+        pas = Image.new("RGBA", (1, rozm[1]))
+        for y in range(rozm[1]):
+            t = y / max(1, rozm[1] - 1)
+            pas.putpixel((0, y), tuple(
+                round(gora[i] + (dol[i] - gora[i]) * t) for i in range(4)))
+        out = Image.new("RGBA", rozm, (0, 0, 0, 0))
+        out.paste(pas.resize(rozm), (0, 0), cls._maska(rozm, prom))
+        return out
+
+    @staticmethod
+    def _cien(rozm, prom, rozmycie, moc, odsun):
+        im = Image.new("RGBA", (rozm[0] + rozmycie * 4, rozm[1] + rozmycie * 4),
+                       (0, 0, 0, 0))
+        ImageDraw.Draw(im).rounded_rectangle(
+            [rozmycie * 2, rozmycie * 2 + odsun,
+             rozmycie * 2 + rozm[0] - 1, rozmycie * 2 + rozm[1] - 1 + odsun],
+            radius=prom, fill=(0, 0, 0, moc))
+        return im.filter(ImageFilter.GaussianBlur(rozmycie))
+
+    # ------------------------------------------------------------------
+    # tlo
+    # ------------------------------------------------------------------
+
+    def _pilnuj(self, ile):
+        """Okno maksymalizuje sie w kilku krokach — przez pierwsze trzy
+        sekundy pilnujemy, czy tlo nadal pokrywa cala powierzchnie."""
+        try:
+            if not self.winfo_exists():
+                return
+            W, H = self.winfo_width(), self.winfo_height()
+            brak = (self._tlo_tk is None or self._tlo_tk.width() < W
+                    or self._tlo_tk.height() < H)
+            if brak and W > 50 and H > 50:
+                self._rozmiar = None
+                self._na_zmiane()
+        except tk.TclError:
+            return
+        if ile < 12:
+            self.after(250, lambda: self._pilnuj(ile + 1))
+
+    @staticmethod
+    def _zdjecie_tla():
+        obraz = None
+        try:
+            from tlo_wbudowane import obraz as tlo_z_kodu
+            obraz = tlo_z_kodu()
+        except ImportError:
+            pass
+        if obraz is None:
+            plik = zasob("logowanie-tlo.jpg")
+            if plik:
+                try:
+                    obraz = Image.open(plik).convert("RGB")
+                except (OSError, ValueError):
+                    obraz = None
+        return obraz
 
     def _na_zmiane(self, _e=None):
-        W, H = self.winfo_width(), self.winfo_height()
+        try:
+            self.update_idletasks()
+            W, H = self.winfo_width(), self.winfo_height()
+        except tk.TclError:
+            return
         if W < 50 or H < 50 or (W, H) == self._rozmiar:
             return
         self._rozmiar = (W, H)
-        zrodlo = otworz_obraz("logowanie-tlo.jpg")
-        if zrodlo is None:
-            # Nie powinno sie zdarzyc — zdjecie jest wpisane w kod. Gdyby
-            # jednak, mowimy o tym wprost zamiast pokazywac pusty ekran.
+        self._skala = min(1.0, (H - 20) / (self.KH + 2 * self.MARG))
+
+        obraz = self._zdjecie_tla()
+        if obraz is None:
             self.tlo.configure(image="", bg=B["tlo"])
-            self.komunikat("brak zdjęcia tła", B["uwaga"])
+            self.rysuj()
             return
         try:
-            obraz = zrodlo.convert("RGB")
-            sk = max(W / obraz.width, H / obraz.height)
-            nowy = obraz.resize((max(1, int(obraz.width * sk)),
-                                 max(1, int(obraz.height * sk))),
-                                Image.LANCZOS)
-            lewy = (nowy.width - W) // 2
-            gorny = int((nowy.height - H) * 0.45)
-            kadr = nowy.crop((lewy, gorny, lewy + W, gorny + H))
-            naklad = Image.new("RGBA", (W, H), (4, 14, 9, 96))
-            kadr = Image.alpha_composite(kadr.convert("RGBA"), naklad)
+            sk = max(W / obraz.width, H / obraz.height) * 1.02
+            nowy = obraz.resize((max(W, int(obraz.width * sk)),
+                                 max(H, int(obraz.height * sk))), Image.LANCZOS)
+            lewy = max(0, (nowy.width - W) // 2)
+            gorny = max(0, int((nowy.height - H) * 0.45))
+            kadr = nowy.crop((lewy, gorny, lewy + W, gorny + H)).convert("RGBA")
+            kadr = Image.alpha_composite(
+                kadr, Image.new("RGBA", (W, H), (4, 14, 9, 104)))
+            # winieta — narozniki ciemniejsze, oko idzie do srodka
+            win = Image.new("L", (W, H), 0)
+            ImageDraw.Draw(win).ellipse(
+                [-W * 0.28, -H * 0.38, W * 1.28, H * 1.38], fill=255)
+            win = win.filter(ImageFilter.GaussianBlur(
+                max(40, min(W, H) // 6))).point(lambda v: int((255 - v) * 0.5))
+            kadr.paste(Image.new("RGBA", (W, H), (0, 0, 0, 255)), (0, 0), win)
+            self._tlo_pil = kadr
             self._tlo_tk = ImageTk.PhotoImage(kadr.convert("RGB"))
             self.tlo.configure(image=self._tlo_tk)
         except (OSError, ValueError, MemoryError):
-            # brak zdjecia nie moze przeszkodzic w zalogowaniu
             self.tlo.configure(image="", bg=B["tlo"])
+        self.rysuj()
 
-    def komunikat(self, tekst, kolor=None):
-        """Napis w rogu ekranu logowania: wersja albo postep aktualizacji."""
-        try:
-            self.stopka.configure(text=tekst, fg=kolor or B["zloto"])
-        except tk.TclError:
-            pass
+    # ------------------------------------------------------------------
+    # rysowanie karty
+    # ------------------------------------------------------------------
 
-    def postep(self, ulamek, tekst=""):
-        """Zielony pasek wgrywania aktualizacji z procentami."""
-        ulamek = max(0.0, min(1.0, float(ulamek)))
-        try:
-            if not self.ramka_postepu.winfo_ismapped():
-                self.ramka_postepu.pack(fill="x", pady=(14, 0),
-                                        before=self._lbl_fabryczny)
-            self.lbl_postep.configure(
-                text=f"{tekst}  {round(ulamek * 100)}%".strip())
-            self.wypelnienie.place_configure(relwidth=ulamek)
-        except (tk.TclError, AttributeError):
-            pass
-
-    def schowaj_postep(self):
-        try:
-            self.ramka_postepu.pack_forget()
-        except (tk.TclError, AttributeError):
-            pass
-
-    # ---------------- karta ----------------
-
-    def _buduj_karte(self):
-        w = tk.Frame(self.karta, bg=B["tlo2"], padx=30, pady=22)
-        w.pack()
-
-        kolo = godlo_okragle(64, B["tlo2"])
-        if kolo is not None:
-            self._godlo = ImageTk.PhotoImage(kolo)
-            tk.Label(w, image=self._godlo, bg=B["tlo2"], bd=0).pack()
-
-        tk.Label(w, text=NAZWA, bg=B["tlo2"], fg=B["tekst"],
-                 font=("Segoe UI Semibold", 15)).pack(pady=(10, 0))
-        tk.Label(w, text=PODTYTUL, bg=B["tlo2"], fg=B["przygasz"],
-                 font=("Segoe UI", 10)).pack()
-
-        self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcentTekst"],
-                               font=("Segoe UI", 18), height=1)
-        self.kropki.pack(pady=(10, 0))
-        self.info = tk.Label(w, text="", bg=B["tlo2"], fg=B["alarm"],
-                             font=("Segoe UI", 9))
-        self.info.pack()
-
-        siatka = tk.Frame(w, bg=B["tlo2"])
-        siatka.pack(pady=(8, 0))
-        # Klawisze o stalym rozmiarze 72x60 px. Przycisk dotykowy ponizej
-        # 44 px robi sie trudny do trafienia — tyle podaja wytyczne Apple,
-        # a Google mowi o 48. Kazdy klawisz siedzi we wlasnej ramce o
-        # narzuconym rozmiarze, bo szerokosc podawana Buttonowi liczy sie
-        # w znakach i przy roznych czcionkach daje rozne wielkosci.
-        self.przyciski = []
+    def _prostokaty(self):
+        """Polozenie klawiszy w ukladzie karty, przed przeskalowaniem."""
+        szer = 3 * self.KLW + 2 * self.ODST
+        sx = (self.KW - szer) // 2
+        out = []
         for i, znak in enumerate(self.KLAWISZE):
-            glowny = znak == "OK"
-            komorka = tk.Frame(siatka, width=72, height=60, bg=B["tlo2"])
-            komorka.grid(row=i // 3, column=i % 3, padx=5, pady=5)
-            komorka.pack_propagate(False)
-            b = tk.Button(
-                komorka, text=znak, relief="flat", bd=0, cursor="hand2",
-                font=("Segoe UI Semibold", 18 if not glowny else 15),
-                activeforeground=B["tekst"],
-                bg=B["akcent"] if glowny else B["tlo3"],
-                fg=B["naAkcencie"] if glowny else (
-                    B["alarm"] if znak == "C" else B["tekst"]),
-                activebackground=B["akcent2"] if glowny else B["linia"],
-                command=lambda z=znak: self.klik(z))
-            b.pack(fill="both", expand=True)
-            self.przyciski.append(b)
+            out.append((sx + (i % 3) * (self.KLW + self.ODST),
+                        self.SY + (i // 3) * (self.KLH + self.ODST),
+                        self.KLW, self.KLH, znak))
+        return out
 
-        # Pasek wgrywania aktualizacji — normalnie schowany, pokazuje sie
-        # dopiero wtedy, gdy program pobiera nowa wersje.
-        self.ramka_postepu = tk.Frame(w, bg=B["tlo2"])
-        self.lbl_postep = tk.Label(self.ramka_postepu, text="", bg=B["tlo2"],
-                                   fg=B["akcentTekst"],
-                                   font=("Segoe UI Semibold", 9))
-        self.lbl_postep.pack(anchor="w")
-        tor = tk.Frame(self.ramka_postepu, bg=B["linia"], height=6)
-        tor.pack(fill="x", pady=(4, 0))
-        tor.pack_propagate(False)
-        self.wypelnienie = tk.Frame(tor, bg=B["akcentTekst"])
-        self.wypelnienie.place(x=0, y=0, relwidth=0, relheight=1)
+    def rysuj(self, _e=None):
+        try:
+            if not self.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        KW, KH, R = self.KW, self.KH, self.PROM
+        # Cien musi wyjsc POZA karte, wiec rysujemy na wiekszym plotnie
+        # z marginesem. Wczesniej lezal w srodku karty i byl niewidoczny.
+        M = self.MARG
+        plotno = Image.new("RGBA", (KW + 2 * M, KH + 2 * M), (0, 0, 0, 0))
+        plotno.alpha_composite(self._cien((KW, KH), R, 30, 100, 20),
+                               (M - 60, M - 60))
+        plotno.alpha_composite(self._cien((KW, KH), R, 10, 130, 6),
+                               (M - 20, M - 20))
+        karta = Image.new("RGBA", (KW, KH), (0, 0, 0, 0))
+        karta.alpha_composite(
+            self._przejscie((KW, KH), (6, 120, 80, 246), (2, 72, 48, 250), R))
+        d = ImageDraw.Draw(karta)
+        d.rounded_rectangle([0, 0, KW - 1, KH - 1], radius=R,
+                            outline=(201, 168, 110, 190), width=1)
+        d.line([R + 8, 1, KW - R - 8, 1], fill=(255, 255, 255, 60), width=1)
 
-        self._lbl_fabryczny = tk.Label(
-            w, text="PIN fabryczny 1234 — zmień po pierwszym logowaniu",
-            bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 8))
-        self._lbl_fabryczny.pack(pady=(12, 0))
-        odn = tk.Label(w, text="Nie pamiętam PIN-u", bg=B["tlo2"],
-                       fg=B["zloto"], font=("Segoe UI", 9, "underline"),
-                       cursor="hand2")
-        odn.pack(pady=(4, 0))
-        odn.bind("<Button-1>", lambda _e: self._zapomnialem())
+        # godlo z poswiata i zlotym pierscieniem
+        pos = Image.new("RGBA", (168, 168), (0, 0, 0, 0))
+        ImageDraw.Draw(pos).ellipse([26, 26, 142, 142], fill=(255, 255, 255, 40))
+        karta.alpha_composite(pos.filter(ImageFilter.GaussianBlur(17)),
+                              ((KW - 168) // 2, 14))
+        godlo = None
+        try:
+            from tlo_wbudowane import godlo as godlo_z_kodu
+            godlo = godlo_z_kodu()
+        except ImportError:
+            pass
+        if godlo is None:
+            plik = zasob("godlo-kolo.png") or zasob("godlo-awf.png")
+            if plik:
+                try:
+                    godlo = Image.open(plik).convert("RGBA")
+                except (OSError, ValueError):
+                    godlo = None
+        if godlo is not None:
+            karta.alpha_composite(godlo.resize((100, 100), Image.LANCZOS),
+                                  ((KW - 100) // 2, 40))
+        d.ellipse([(KW - 108) // 2, 36, (KW + 108) // 2, 144],
+                  outline=(232, 214, 176, 150), width=1)
 
-    # ---------------- obsluga ----------------
+        d.text((KW / 2, 182), NAZWA, font=self._czcionka(27, True),
+               fill=(255, 255, 255), anchor="mm")
+        d.line([KW / 2 - 46, 202, KW / 2 + 46, 202],
+               fill=(232, 214, 176, 190), width=1)
+        d.text((KW / 2, 220), PODTYTUL, font=self._czcionka(13),
+               fill=(198, 222, 210), anchor="mm")
+
+        # kropki PIN-u — wypelnione tyle, ile cyfr wpisano
+        for i in range(max(4, len(self.wpisany))):
+            x = KW / 2 - 36 + i * 24
+            if i < len(self.wpisany):
+                d.ellipse([x - 7, 236, x + 7, 250], fill=(232, 214, 176))
+            else:
+                d.ellipse([x - 7, 236, x + 7, 250],
+                          outline=(150, 190, 170), width=2)
+
+        if self.info:
+            d.text((KW / 2, 262), self.info, font=self._czcionka(11, True),
+                   fill=(255, 150, 150), anchor="mm")
+
+        blok = self.zablokowany or self.blokada_aktualizacji
+        for x, y, kw, kh, znak in self._prostokaty():
+            wcisniety = self._wcisniety == znak
+            karta.alpha_composite(self._cien((kw, kh), self.KPROM, 6,
+                                             60 if wcisniety else 120, 3),
+                                  (x - 12, y - 12))
+            if znak == "OK":
+                gora, dol = (226, 204, 154, 250), (184, 150, 90, 252)
+                barwa, fnt = (16, 44, 31), self._czcionka(21, True)
+            else:
+                gora, dol = (5, 110, 74, 250), (2, 66, 44, 252)
+                fnt = self._czcionka(25, True)
+                barwa = (255, 150, 150) if znak == "C" else (255, 255, 255)
+            if wcisniety:                      # wcisniety = odwrocone swiatlo
+                gora, dol = dol, gora
+            kl = self._przejscie((kw, kh), gora, dol, self.KPROM)
+            if blok:
+                kl = Image.blend(kl, Image.new("RGBA", (kw, kh), (0, 0, 0, 190)),
+                                 0.45)
+                barwa = tuple(int(c * 0.55) + 40 for c in barwa)
+            dl = ImageDraw.Draw(kl)
+            dl.rounded_rectangle([0, 0, kw - 1, kh - 1], radius=self.KPROM,
+                                 outline=(232, 214, 176, 90), width=1)
+            if not wcisniety:
+                dl.line([self.KPROM, 1, kw - self.KPROM, 1],
+                        fill=(255, 255, 255, 70), width=1)
+                dl.arc([2, 2, kw - 3, kh // 2], 190, 350,
+                       fill=(255, 255, 255, 26), width=1)
+            dl.line([self.KPROM, kh - 2, kw - self.KPROM, kh - 2],
+                    fill=(0, 0, 0, 110), width=1)
+            dl.text((kw / 2, kh / 2 + 1), znak, font=fnt,
+                    fill=(0, 0, 0, 110), anchor="mm")
+            dl.text((kw / 2, kh / 2), znak, font=fnt, fill=barwa, anchor="mm")
+            karta.alpha_composite(kl, (x, y))
+
+        szer = 3 * self.KLW + 2 * self.ODST
+        sx = (KW - szer) // 2
+        py = self.SY + 4 * (self.KLH + self.ODST) + 8
+        if self.postep_stan is not None:
+            ulamek, opis = self.postep_stan
+            d.text((sx, py), opis, font=self._czcionka(12, True),
+                   fill=(232, 214, 176))
+            d.text((sx + szer, py), f"{round(ulamek * 100)}%",
+                   font=self._czcionka(12, True), fill=(198, 222, 210),
+                   anchor="ra")
+            d.rounded_rectangle([sx, py + 22, sx + szer, py + 29], radius=4,
+                                fill=(0, 0, 0, 120))
+            if ulamek > 0:
+                d.rounded_rectangle(
+                    [sx, py + 22, sx + max(8, int(szer * ulamek)), py + 29],
+                    radius=4, fill=(232, 214, 176))
+        else:
+            d.text((KW / 2, py + 4), "PIN fabryczny 1234 — zmień po pierwszym "
+                   "logowaniu", font=self._czcionka(11),
+                   fill=(170, 200, 186), anchor="mm")
+        d.text((KW / 2, py + 58), "Nie pamiętam PIN-u",
+               font=self._czcionka(12), fill=(232, 214, 176), anchor="mm")
+        d.line([KW / 2 - 63, py + 69, KW / 2 + 63, py + 69],
+               fill=(232, 214, 176, 160), width=1)
+        self._odnosnik = (KW / 2 - 70, py + 46, 140, 30)
+
+        plotno.alpha_composite(karta, (M, M))
+        karta = plotno
+        if self._skala < 0.999:
+            nowy = (max(1, int(karta.width * self._skala)),
+                    max(1, int(karta.height * self._skala)))
+            karta = karta.resize(nowy, Image.LANCZOS)
+
+        # sklejamy z tlem, bo tkinter nie znosi przezroczystosci w Label
+        podklad = Image.new("RGBA", karta.size, (0, 0, 0, 0))
+        if self._tlo_tk is not None and getattr(self, "_tlo_pil", None):
+            W, H = self._rozmiar
+            lx = (W - karta.width) // 2
+            ly = (H - karta.height) // 2
+            podklad = self._tlo_pil.crop(
+                (lx, ly, lx + karta.width, ly + karta.height))
+        else:
+            podklad = Image.new("RGBA", karta.size,
+                                tuple(int(B["tlo"][i:i + 2], 16)
+                                      for i in (1, 3, 5)) + (255,))
+        gotowe = Image.alpha_composite(podklad.convert("RGBA"), karta)
+        self._karta_tk = ImageTk.PhotoImage(gotowe.convert("RGB"))
+        self.plotno.configure(image=self._karta_tk)
+
+    # ------------------------------------------------------------------
+    # obsluga
+    # ------------------------------------------------------------------
+
+    def _z_ekranu(self, e):
+        """Wspolrzedne klikniecia w ukladzie karty.
+
+        Obrazek jest wiekszy od karty o margines na cien, a przy malym
+        ekranie jeszcze przeskalowany — jedno i drugie trzeba odjac.
+        """
+        return (e.x / max(0.01, self._skala) - self.MARG,
+                e.y / max(0.01, self._skala) - self.MARG)
+
+    def _wcisnij(self, e):
+        if self.zablokowany or self.blokada_aktualizacji:
+            return
+        x, y = self._z_ekranu(e)
+        for kx, ky, kw, kh, znak in self._prostokaty():
+            if kx <= x <= kx + kw and ky <= y <= ky + kh:
+                self._wcisniety = znak
+                self.rysuj()
+                return
+
+    def _pusc(self, e):
+        znak = self._wcisniety
+        self._wcisniety = None
+        x, y = self._z_ekranu(e)
+        ox, oy, ow, oh = getattr(self, "_odnosnik", (0, 0, 0, 0))
+        if ox <= x <= ox + ow and oy <= y <= oy + oh:
+            self.rysuj()
+            self._zapomnialem()
+            return
+        if znak is None:
+            return
+        for kx, ky, kw, kh, z in self._prostokaty():
+            if z == znak and kx <= x <= kx + kw and ky <= y <= ky + kh:
+                self.klik(znak)
+                return
+        self.rysuj()
 
     def klik(self, znak):
+        if self.zablokowany or self.blokada_aktualizacji:
+            return
         if znak == "C":
             self.wpisany = ""
         elif znak == "OK":
@@ -981,8 +1136,8 @@ class EkranPin(tk.Frame):
             return
         elif len(self.wpisany) < 8:
             self.wpisany += znak
-        self.kropki.configure(text="●  " * len(self.wpisany))
-        self.info.configure(text="")
+        self.info = ""
+        self.rysuj()
 
     def _klawisz(self, e):
         if not self.winfo_ismapped():
@@ -1001,13 +1156,38 @@ class EkranPin(tk.Frame):
         else:
             self.proby += 1
             self.wpisany = ""
-            self.kropki.configure(text="")
             if self.proby >= 5:
-                self.info.configure(text="Zablokowano — uruchom ponownie")
-                for b in self.przyciski:
-                    b.configure(state="disabled")
+                self.zablokowany = True
+                self.info = "Zablokowano — uruchom ponownie"
             else:
-                self.info.configure(text=f"Błędny PIN — próba {self.proby} z 5")
+                self.info = f"Błędny PIN — próba {self.proby} z 5"
+            self.rysuj()
+
+    # ------------------------------------------------------------------
+    # aktualizacja
+    # ------------------------------------------------------------------
+
+    def komunikat(self, tekst, kolor=None):
+        """Napis w rogu ekranu — wersja albo stan sprawdzania."""
+        try:
+            self.rog.configure(text=tekst, fg=kolor or B["zloto"])
+        except tk.TclError:
+            pass
+
+    def postep(self, ulamek, tekst=""):
+        """Pasek wgrywania aktualizacji. Klawiatura jest wtedy zablokowana —
+        podmiana plikow w trakcie logowania skonczylaby sie zamknieciem
+        programu komus pod reka."""
+        self.postep_stan = (max(0.0, min(1.0, float(ulamek))), tekst)
+        self.blokada_aktualizacji = True
+        self.info = "Trwa aktualizacja — poczekaj"
+        self.rysuj()
+
+    def schowaj_postep(self):
+        self.postep_stan = None
+        self.blokada_aktualizacji = False
+        self.info = ""
+        self.rysuj()
 
     def _zapomnialem(self):
         """Odzyskanie dostepu: haslem administratora albo kodem z poczty."""
@@ -1175,7 +1355,6 @@ class EkranPin(tk.Frame):
         y = g.winfo_rooty() + 70
         w.geometry(f"+{max(0, x)}+{max(0, y)}")
 
-
 # ==========================================================================
 # okno glowne
 # ==========================================================================
@@ -1219,7 +1398,7 @@ class App(tk.Tk):
         self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
         self.ekran_pin.pack(fill="both", expand=True)
 
-        # Aktualizacja wgrywa sie sama, jeszcze przed wpisaniem PIN-u.
+        # Aktualizacja wgrywa sie sama, zanim ktokolwiek wpisze PIN.
         self._zalogowany = False
         self._akt_stan = None
         self.after(1200, self._cicha_aktualizacja)
@@ -1426,10 +1605,7 @@ class App(tk.Tk):
         self._petla()
         if self._nowa_instalacja:
             self.after(400, self._pierwsze_uruchomienie)
-        # Gdy sprawdzenie przed PIN-em juz powiedzialo, ze wersja jest
-        # najnowsza, nie ma po co pytac serwera drugi raz.
-        if self._akt_stan != "aktualna":
-            self._sprawdz_aktualizacje()
+        self._sprawdz_aktualizacje()
 
     def zablokuj(self):
         if self.animacja:
@@ -1449,26 +1625,40 @@ class App(tk.Tk):
 
         marka = tk.Frame(self.gora, bg=B["tlo2"])
         marka.pack(side="left", padx=(14, 0))
-        if B["welon"]:
-            # W trybie jasnym pelne logo poziome — na bieli czyta sie lepiej.
-            zrodlo = otworz_obraz("logo-awf.png")
-            if zrodlo is not None:
-                obraz = zrodlo.convert("RGBA")
-                h = 28
-                obraz = obraz.resize((int(obraz.width * h / obraz.height), h),
-                                     Image.LANCZOS)
-                podklad = Image.new("RGBA", obraz.size,
-                                    rgb_barwy(B["tlo2"]) + (255,))
-                self._znak = ImageTk.PhotoImage(
-                    Image.alpha_composite(podklad, obraz).convert("RGB"))
-                tk.Label(marka, image=self._znak, bg=B["tlo2"], bd=0
-                         ).pack(side="left")
-        else:
-            kolo = godlo_okragle(36, B["tlo2"])
-            if kolo is not None:
-                self._znak = ImageTk.PhotoImage(kolo)
-                tk.Label(marka, image=self._znak, bg=B["tlo2"], bd=0
-                         ).pack(side="left")
+        obraz = None
+        if B["welon"]:                       # tryb jasny — pelne logo poziome
+            plik = zasob("logo-awf.png")
+            if plik:
+                try:
+                    obraz = Image.open(plik).convert("RGBA")
+                    h = 28
+                    obraz = obraz.resize(
+                        (int(obraz.width * h / obraz.height), h), Image.LANCZOS)
+                except (OSError, ValueError):
+                    obraz = None
+        else:                                # tryb ciemny — samo godlo
+            try:
+                from tlo_wbudowane import godlo as godlo_z_kodu
+                obraz = godlo_z_kodu()
+            except ImportError:
+                obraz = None
+            if obraz is None:
+                plik = zasob("godlo-kolo.png") or zasob("godlo-awf.png")
+                if plik:
+                    try:
+                        obraz = Image.open(plik).convert("RGBA")
+                    except (OSError, ValueError):
+                        obraz = None
+            if obraz is not None:
+                obraz = obraz.resize((38, 38), Image.LANCZOS)
+        if obraz is not None:
+            podklad = Image.new("RGBA", obraz.size,
+                                tuple(int(B["tlo2"][i:i + 2], 16)
+                                      for i in (1, 3, 5)) + (255,))
+            obraz = Image.alpha_composite(podklad, obraz.convert("RGBA"))
+            self._znak = ImageTk.PhotoImage(obraz.convert("RGB"))
+            tk.Label(marka, image=self._znak, bg=B["tlo2"],
+                     bd=0).pack(side="left")
 
         podpis = tk.Frame(marka, bg=B["tlo2"])
         podpis.pack(side="left", padx=(11, 0))
@@ -1604,7 +1794,7 @@ class App(tk.Tk):
                       cursor="hand2", font=("Segoe UI", 10), padx=16, pady=8,
                       bg=B["akcent"] if glowny else B["tlo3"],
                       fg=B["naAkcencie"] if glowny else B["tekst"],
-                      activebackground=B["akcent2"] if glowny else B["linia"]
+                      activebackground=B["zloto"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
 
     def _buduj_kierowcow(self):
@@ -1655,7 +1845,7 @@ class App(tk.Tk):
             tk.Label(k, text=etykieta.upper(), bg=B["tlo2"], fg=B["przygasz"],
                      font=("Segoe UI", 8), anchor="w").pack(anchor="w", padx=14,
                                                             pady=(12, 0))
-            v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcentTekst"],
+            v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcent"],
                          font=("Segoe UI Semibold", 13), anchor="w")
             v.pack(anchor="w", padx=14, pady=(2, 12))
             self.karty_ster[etykieta] = v
@@ -1746,7 +1936,7 @@ class App(tk.Tk):
                       cursor="hand2", font=("Segoe UI", 10), padx=14, pady=7,
                       bg=B["akcent"] if glowny else B["tlo3"],
                       fg=B["naAkcencie"] if glowny else B["tekst"],
-                      activebackground=B["akcent2"] if glowny else B["linia"]
+                      activebackground=B["zloto"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
 
         v_pelny = tk.BooleanVar(value=self.d.get("start_pelny", False))
@@ -2429,58 +2619,15 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
 
     # ---------------- aktualizacje ----------------
 
-    def _pokaz_wynik_aktualizacji(self):
-        """Po aktualizacji program wraca sam. Tu melduje, jak poszlo —
-        okno pomocnika jest ukryte, wiec to jedyna informacja zwrotna."""
-        try:
-            import aktualizacje
-        except ImportError:
-            return
-        wynik = aktualizacje.odczytaj_wynik()
-        if not wynik:
-            return
-        rodzaj, tresc = wynik
-        if rodzaj == "OK":
-            self.log(f"zaktualizowano do wersji {tresc or VER}")
-            nowa = tresc or VER
-            self.after(600, lambda: self._pasek_informacyjny(
-                f"Zaktualizowano do wersji {nowa}", B["akcent"]))
-        else:
-            self.log("aktualizacja nieudana: " + tresc)
-            self.after(600, lambda: messagebox.showwarning(
-                "Aktualizacja", tresc + "\n\nProgram działa w poprzedniej "
-                "wersji.", parent=self))
-
-    def _pasek_informacyjny(self, tekst, kolor):
-        """Waski pasek u gory, znika sam po kilku sekundach."""
-        pasek = tk.Frame(self, bg=kolor, height=34)
-        pasek.pack(fill="x", before=self.tresc)
-        pasek.pack_propagate(False)
-        tk.Label(pasek, text=tekst, bg=kolor, fg=B["naAkcencie"],
-                 font=("Segoe UI Semibold", 10)).pack(side="left", padx=18)
-        tk.Label(pasek, text="✕", bg=kolor, fg=B["naAkcencie"],
-                 font=("Segoe UI", 11), cursor="hand2", padx=16
-                 ).pack(side="right")
-
-        def zamknij(_e=None):
-            try:
-                pasek.destroy()
-                self.scena.rysuj()
-            except tk.TclError:
-                pass
-        for dziecko in pasek.winfo_children():
-            dziecko.bind("<Button-1>", zamknij)
-        pasek.bind("<Button-1>", zamknij)
-        self.after(8000, zamknij)
-
     # ------- cicha aktualizacja przed zalogowaniem -------
 
     def _cicha_aktualizacja(self):
         """Sprawdza serwer i sam wgrywa nowa wersje, zanim ktos wpisze PIN.
 
         Na ekranie logowania nikt nie pracuje, wiec zamkniecie i ponowne
-        uruchomienie programu niczego nie przerywa. W czasie sluzby juz tak
-        nie robimy — wtedy tylko pytamy oknem.
+        uruchomienie niczego nie przerywa. Po rozpoczeciu pobierania
+        klawiatura jest zablokowana az do konca — inaczej dyzurny zalogowalby
+        sie w chwili, gdy program ma sie zamknac.
         """
         try:
             import aktualizacje                      # noqa: F401
@@ -2513,7 +2660,6 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             self._napis_pin("v" + VER)
 
     def _napis_pin(self, tekst, kolor=None):
-        """Napis w rogu ekranu logowania — po zalogowaniu juz go nie ma."""
         ekran = getattr(self, "ekran_pin", None)
         try:
             if ekran is not None and ekran.winfo_exists():
@@ -2542,15 +2688,20 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         import threading
         self._kolejka_wgrania = queue.Queue()
         self._pasek_pin(0.0, f"Aktualizacja do {info['wersja']}")
-        self._napis_pin(f"v{VER} → {info['wersja']}", B["akcent"])
+        self._napis_pin(f"v{VER} \u2192 {info['wersja']}", B["zloto"])
         self.log(f'dostępna wersja {info["wersja"]} — wgrywam sama')
 
         def robota():
             import aktualizacje
             try:
-                bat = aktualizacje.zainstaluj_po_cichu(
+                plik = aktualizacje.pobierz(
                     info,
                     postep=lambda u: self._kolejka_wgrania.put(("postep", u)))
+                self._kolejka_wgrania.put(("etap", "Rozpakowywanie"))
+                nowe = aktualizacje.rozpakuj(plik)
+                bat = aktualizacje.przygotuj_pomocnika(
+                    nowe, aktualizacje.katalog_programu(),
+                    wersja=info.get("wersja", ""))
                 self._kolejka_wgrania.put(("gotowe", bat))
             except Exception as blad:                # noqa: BLE001
                 self._kolejka_wgrania.put(("blad", str(blad)))
@@ -2571,27 +2722,68 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             self.after(100, lambda: self._odbierz_wgranie(info))
             return
 
+        if rodzaj == "etap":
+            self._pasek_pin(1.0, tresc)
+            self.after(100, lambda: self._odbierz_wgranie(info))
+            return
+
         if rodzaj == "blad":
-            # Nieudane pobranie nie moze przeszkodzic w zalogowaniu.
+            # Nieudane pobranie nie moze przeszkodzic w zalogowaniu —
+            # odblokowujemy klawiature i zostajemy na starej wersji.
             self._schowaj_pasek_pin()
             self._napis_pin("v" + VER)
             self.log("cicha aktualizacja nieudana: " + str(tresc))
             return
 
-        if self._zalogowany:
-            self._schowaj_pasek_pin()
-            # Ktos zdazyl wpisac PIN w trakcie pobierania. Nie zamykamy
-            # programu w czasie sluzby — podmiana poczeka do nastepnego
-            # uruchomienia, pliki juz leza gotowe.
-            self.log(f'wersja {info["wersja"]} pobrana — wgra się '
-                     'przy następnym uruchomieniu')
-            return
-
-        self._pasek_pin(1.0, "Zamykam się — zaraz wrócę w nowej wersji")
+        self._pasek_pin(1.0, "Zamykam się — zaraz wrócę")
         self.update_idletasks()
         import aktualizacje
         aktualizacje.uruchom_pomocnika(tresc)
         self.after(400, self.destroy)
+
+    def _pokaz_wynik_aktualizacji(self):
+        """Po aktualizacji program wraca sam. Tu melduje, jak poszlo —
+        okno pomocnika jest ukryte, wiec to jedyna informacja zwrotna."""
+        try:
+            import aktualizacje
+        except ImportError:
+            return
+        wynik = aktualizacje.odczytaj_wynik()
+        if not wynik:
+            return
+        rodzaj, tresc = wynik
+        if rodzaj == "OK":
+            self.log(f"zaktualizowano do wersji {tresc or VER}")
+            nowa = tresc or VER
+            self.after(600, lambda: self._pasek_informacyjny(
+                f"Zaktualizowano do wersji {nowa}", B["ok"]))
+        else:
+            self.log("aktualizacja nieudana: " + tresc)
+            self.after(600, lambda: messagebox.showwarning(
+                "Aktualizacja", tresc + "\n\nProgram działa w poprzedniej "
+                "wersji.", parent=self))
+
+    def _pasek_informacyjny(self, tekst, kolor):
+        """Waski pasek u gory, znika sam po kilku sekundach."""
+        pasek = tk.Frame(self, bg=kolor, height=34)
+        pasek.pack(fill="x", before=self.tresc)
+        pasek.pack_propagate(False)
+        tk.Label(pasek, text=tekst, bg=kolor, fg=B["naAkcencie"],
+                 font=("Segoe UI Semibold", 10)).pack(side="left", padx=18)
+        tk.Label(pasek, text="✕", bg=kolor, fg=B["naAkcencie"],
+                 font=("Segoe UI", 11), cursor="hand2", padx=16
+                 ).pack(side="right")
+
+        def zamknij(_e=None):
+            try:
+                pasek.destroy()
+                self.scena.rysuj()
+            except tk.TclError:
+                pass
+        for dziecko in pasek.winfo_children():
+            dziecko.bind("<Button-1>", zamknij)
+        pasek.bind("<Button-1>", zamknij)
+        self.after(8000, zamknij)
 
     def _sprawdz_aktualizacje(self):
         """Sprawdzenie przy starcie — po cichu. Gdy nie ma nowszej wersji
@@ -2660,8 +2852,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         pole.pack(fill="both", expand=True)
 
         pole.tag_configure("wersja", font=("Segoe UI Semibold", 13),
-                           foreground=B["akcentTekst"], spacing1=14,
-                           spacing3=2)
+                           foreground=B["akcent"], spacing1=14, spacing3=2)
         pole.tag_configure("biezaca", font=("Segoe UI Semibold", 13),
                            foreground=B["zloto"], spacing1=14, spacing3=2)
         pole.tag_configure("data", font=("Consolas", 9), foreground=B["przygasz"])
