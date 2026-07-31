@@ -34,26 +34,36 @@ DNI_PELNE = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek",
 # barwy — dwa komplety, jak w bloku :root i body.jasny we wzorcu
 # ==========================================================================
 
+# Obie palety wyprowadzone z dwoch barw uczelni: zielen #036744 i zloto
+# #b9975b. Tla to ta sama zielen zmieszana z czernia, napisy — z biela,
+# wiec caly program trzyma sie jednej rodziny barw.
+#
+# Zielen uczelni jest ciemna, dlatego sluzy jako WYPELNIENIE z bialym
+# napisem (kontrast 6,9). Jako napis na ciemnym tle bylaby nieczytelna
+# (2,6), wiec do tego jest osobny klucz "akcentTekst" — ta sama zielen
+# rozjasniona biela. Zloto odwrotnie: na ciemnym tle wlasne #b9975b,
+# na bialym przyciemnione, bo jasne zloto na bieli ma kontrast 2,8.
+
 CIEMNY = {
-    "tlo": "#071b13", "tlo2": "#0d2419", "tlo3": "#143024", "linia": "#1f4633",
-    "tekst": "#e9f2ec", "tekst2": "#a9c2b4", "przygasz": "#7d998a",
-    "akcent": "#00a86b", "akcent2": "#008a58",
-    "zloto": "#c9a86e", "zloto2": "#b9975b",
-    "ok": "#00a86b", "uwaga": "#c9a86e", "alarm": "#ff6b6b",
-    "naAkcencie": "#04220e", "naPanelu": "#eaf3ed",
-    "panel": (8, 20, 15, 194), "panelRamka": (201, 168, 110, 56),
-    "scenaTlo": "#0a0e13", "welon": 0,
+    "tlo": "#001309", "tlo2": "#011c12", "tlo3": "#01291b", "linia": "#023c27",
+    "tekst": "#ebf3f0", "tekst2": "#b3d1c7", "przygasz": "#86b6a5",
+    "akcent": "#036744", "akcent2": "#024a31", "akcentTekst": "#599b84",
+    "zloto": "#b9975b", "zloto2": "#856d42",
+    "ok": "#599b84", "uwaga": "#b9975b", "alarm": "#ff6b6b",
+    "naAkcencie": "#ffffff", "naPanelu": "#ebf3f0",
+    "panel": (1, 28, 18, 194), "panelRamka": (185, 151, 91, 56),
+    "scenaTlo": "#000805", "welon": 0,
 }
 
 JASNY = {
-    "tlo": "#f4f7f4", "tlo2": "#ffffff", "tlo3": "#e7efe9", "linia": "#cddbd2",
-    "tekst": "#0b2318", "tekst2": "#33523f", "przygasz": "#4b6a57",
-    "akcent": "#006341", "akcent2": "#004d33",
-    "zloto": "#8a6a2e", "zloto2": "#b9975b",
-    "ok": "#006341", "uwaga": "#8a6a2e", "alarm": "#b32626",
-    "naAkcencie": "#ffffff", "naPanelu": "#0b2318",
-    "panel": (255, 255, 255, 219), "panelRamka": (0, 99, 65, 56),
-    "scenaTlo": "#dde6e0", "welon": 56,
+    "tlo": "#f4f8f7", "tlo2": "#ffffff", "tlo3": "#e6f0ec", "linia": "#c8ded6",
+    "tekst": "#024830", "tekst2": "#036140", "przygasz": "#2f7a61",
+    "akcent": "#036744", "akcent2": "#024d33", "akcentTekst": "#036744",
+    "zloto": "#6b5835", "zloto2": "#b9975b",
+    "ok": "#036744", "uwaga": "#6b5835", "alarm": "#b32626",
+    "naAkcencie": "#ffffff", "naPanelu": "#024830",
+    "panel": (255, 255, 255, 219), "panelRamka": (3, 103, 68, 56),
+    "scenaTlo": "#e1ede9", "welon": 56,
 }
 
 B = dict(CIEMNY)          # biezaca paleta
@@ -771,7 +781,7 @@ class EkranPin(tk.Frame):
         # Numer wersji i stan aktualizacji — widoczne jeszcze przed PIN-em.
         # Dyzurny ma wiedziec, co ma zainstalowane, bez logowania sie.
         self.stopka = tk.Label(self, text="v" + VER, bg=B["tlo2"],
-                               fg=B["zloto2"], font=("Segoe UI", 9),
+                               fg=B["zloto"], font=("Segoe UI", 9),
                                padx=10, pady=4)
         self.stopka.place(relx=0.99, rely=0.98, anchor="se")
 
@@ -811,7 +821,7 @@ class EkranPin(tk.Frame):
     def komunikat(self, tekst, kolor=None):
         """Napis w rogu ekranu logowania: wersja albo postep aktualizacji."""
         try:
-            self.stopka.configure(text=tekst, fg=kolor or B["zloto2"])
+            self.stopka.configure(text=tekst, fg=kolor or B["zloto"])
         except tk.TclError:
             pass
 
@@ -855,7 +865,7 @@ class EkranPin(tk.Frame):
         tk.Label(w, text=PODTYTUL, bg=B["tlo2"], fg=B["przygasz"],
                  font=("Segoe UI", 10)).pack()
 
-        self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcent"],
+        self.kropki = tk.Label(w, text="", bg=B["tlo2"], fg=B["akcentTekst"],
                                font=("Segoe UI", 18), height=1)
         self.kropki.pack(pady=(10, 0))
         self.info = tk.Label(w, text="", bg=B["tlo2"], fg=B["alarm"],
@@ -875,7 +885,7 @@ class EkranPin(tk.Frame):
                 bg=B["akcent"] if glowny else B["tlo3"],
                 fg=B["naAkcencie"] if glowny else (
                     B["alarm"] if znak == "C" else B["tekst"]),
-                activebackground=B["zloto"] if glowny else B["linia"],
+                activebackground=B["akcent2"] if glowny else B["linia"],
                 command=lambda z=znak: self.klik(z))
             b.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
             self.przyciski.append(b)
@@ -884,13 +894,13 @@ class EkranPin(tk.Frame):
         # dopiero wtedy, gdy program pobiera nowa wersje.
         self.ramka_postepu = tk.Frame(w, bg=B["tlo2"])
         self.lbl_postep = tk.Label(self.ramka_postepu, text="", bg=B["tlo2"],
-                                   fg=B["akcent"],
+                                   fg=B["akcentTekst"],
                                    font=("Segoe UI Semibold", 9))
         self.lbl_postep.pack(anchor="w")
         tor = tk.Frame(self.ramka_postepu, bg=B["linia"], height=6)
         tor.pack(fill="x", pady=(4, 0))
         tor.pack_propagate(False)
-        self.wypelnienie = tk.Frame(tor, bg=B["akcent"])
+        self.wypelnienie = tk.Frame(tor, bg=B["akcentTekst"])
         self.wypelnienie.place(x=0, y=0, relwidth=0, relheight=1)
 
         self._lbl_fabryczny = tk.Label(
@@ -1527,7 +1537,7 @@ class App(tk.Tk):
                       cursor="hand2", font=("Segoe UI", 10), padx=16, pady=8,
                       bg=B["akcent"] if glowny else B["tlo3"],
                       fg=B["naAkcencie"] if glowny else B["tekst"],
-                      activebackground=B["zloto"] if glowny else B["linia"]
+                      activebackground=B["akcent2"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
 
     def _buduj_kierowcow(self):
@@ -1578,7 +1588,7 @@ class App(tk.Tk):
             tk.Label(k, text=etykieta.upper(), bg=B["tlo2"], fg=B["przygasz"],
                      font=("Segoe UI", 8), anchor="w").pack(anchor="w", padx=14,
                                                             pady=(12, 0))
-            v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcent"],
+            v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcentTekst"],
                          font=("Segoe UI Semibold", 13), anchor="w")
             v.pack(anchor="w", padx=14, pady=(2, 12))
             self.karty_ster[etykieta] = v
@@ -1669,7 +1679,7 @@ class App(tk.Tk):
                       cursor="hand2", font=("Segoe UI", 10), padx=14, pady=7,
                       bg=B["akcent"] if glowny else B["tlo3"],
                       fg=B["naAkcencie"] if glowny else B["tekst"],
-                      activebackground=B["zloto"] if glowny else B["linia"]
+                      activebackground=B["akcent2"] if glowny else B["linia"]
                       ).pack(side="left", padx=(0, 8))
 
         v_pelny = tk.BooleanVar(value=self.d.get("start_pelny", False))
@@ -2367,7 +2377,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             self.log(f"zaktualizowano do wersji {tresc or VER}")
             nowa = tresc or VER
             self.after(600, lambda: self._pasek_informacyjny(
-                f"Zaktualizowano do wersji {nowa}", B["ok"]))
+                f"Zaktualizowano do wersji {nowa}", B["akcent"]))
         else:
             self.log("aktualizacja nieudana: " + tresc)
             self.after(600, lambda: messagebox.showwarning(
@@ -2583,7 +2593,8 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         pole.pack(fill="both", expand=True)
 
         pole.tag_configure("wersja", font=("Segoe UI Semibold", 13),
-                           foreground=B["akcent"], spacing1=14, spacing3=2)
+                           foreground=B["akcentTekst"], spacing1=14,
+                           spacing3=2)
         pole.tag_configure("biezaca", font=("Segoe UI Semibold", 13),
                            foreground=B["zloto"], spacing1=14, spacing3=2)
         pole.tag_configure("data", font=("Consolas", 9), foreground=B["przygasz"])
