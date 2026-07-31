@@ -766,26 +766,12 @@ class EkranPin(tk.Frame):
         if W < 50 or H < 50 or (W, H) == self._rozmiar:
             return
         self._rozmiar = (W, H)
-
-        # Zdjecie jest wbudowane w program, wiec nie zalezy od tego,
-        # czy ktos pamietal dopisac plik do listy przy budowaniu.
-        obraz = None
-        try:
-            from tlo_wbudowane import obraz as tlo_z_kodu
-            obraz = tlo_z_kodu()
-        except ImportError:
-            pass
-        if obraz is None:
-            plik = zasob("logowanie-tlo.jpg")
-            if plik:
-                try:
-                    obraz = Image.open(plik).convert("RGB")
-                except (OSError, ValueError):
-                    obraz = None
-        if obraz is None:
+        plik = zasob("logowanie-tlo.jpg")
+        if not plik:
             self.tlo.configure(image="", bg=B["tlo"])
             return
         try:
+            obraz = Image.open(plik).convert("RGB")
             sk = max(W / obraz.width, H / obraz.height)
             nowy = obraz.resize((max(1, int(obraz.width * sk)),
                                  max(1, int(obraz.height * sk))),
