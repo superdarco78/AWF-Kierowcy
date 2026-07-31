@@ -1,7 +1,7 @@
 {
-  "wersja": "6.2.0",
-  "opis": "Co nowego w 6.2.0:\n\n• Nowe: barwy uczelni w calym programie",
+  "wersja": "6.2.1",
+  "opis": "Co nowego w 6.2.1:\n\n•  godlo bez zielonego kwadratu, tlo wbudowane",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "29da3acb723a9d333d3a5df4bde2c5b63c3b4a48aea475e4426c56e2d74c0a86",
+  "suma": "4aabf86d2da9da2176231d19f35aa680862a131ceaf242fdc231b074ef780a2e",
   "wymagana": false
 }
