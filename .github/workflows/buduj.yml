@@ -30,17 +30,17 @@ jobs:
         id: w
         shell: bash
         run: |
-          POPRZEDNIA=$(git tag --sort=-v:refname | grep '^v' | head -1 | sed 's/^v//')
+          POPRZEDNIA=$(git tag --sort=-v:refname | grep '^v' | head -1 | sed 's/^v//' || true)
           if [ -z "$POPRZEDNIA" ]; then POPRZEDNIA="6.0.0"; fi
           if git rev-parse "v$POPRZEDNIA" >/dev/null 2>&1; then
             ZAKRES="v$POPRZEDNIA..HEAD"
           else
             ZAKRES="HEAD"
           fi
-          OPISY=$(git log --format='%s' $ZAKRES)
+          OPISY=$(git log --format='%s' $ZAKRES || true)
           RODZAJ="poprawka"
-          echo "$OPISY" | grep -qiE '^(nowe|feat|funkcja)' && RODZAJ="funkcja"
-          echo "$OPISY" | grep -qiE 'PRZELOM|BREAKING' && RODZAJ="przelom"
+          if echo "$OPISY" | grep -qiE '^(nowe|feat|funkcja)'; then RODZAJ="funkcja"; fi
+          if echo "$OPISY" | grep -qiE 'PRZELOM|BREAKING'; then RODZAJ="przelom"; fi
           G=$(echo $POPRZEDNIA | cut -d. -f1)
           S=$(echo $POPRZEDNIA | cut -d. -f2)
           M=$(echo $POPRZEDNIA | cut -d. -f3)
@@ -52,8 +52,8 @@ jobs:
             poprawka) M=$((M+1)) ;;
           esac
           NOWA="$G.$S.$M"
-          LISTA=$(git log --format='%s' $ZAKRES | grep -viE '^(Merge|wersja [0-9]|budowanie|Add files via upload)' | sed 's/^/• /' | head -10)
-          [ -z "$LISTA" ] && LISTA="• drobne poprawki"
+          LISTA=$(echo "$OPISY" | grep -viE '^(Merge|wersja [0-9]|budowanie|Add files via upload)' | sed 's/^/• /' | head -10 || true)
+          if [ -z "$LISTA" ]; then LISTA="• drobne poprawki"; fi
           echo "nowa=$NOWA" >> $GITHUB_OUTPUT
           {
             echo "opis<<KONIEC"
