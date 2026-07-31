@@ -1,7 +1,7 @@
 {
-  "wersja": "6.1.9",
-  "opis": "Co nowego w 6.1.9:\n\n• Poprawka: nowe tlo logowania - widok kampusu\n• Poprawka: nowe tlo logowania - widok kampusu\n• Poprawka: pelne tlo logowania bez czarnego pasa",
+  "wersja": "6.1.10",
+  "opis": "Co nowego w 6.1.10:\n\n• pasek postepu aktualizacji i mniejsza karta log",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "fea0a3b5d38369cd1c7b034fd2cd00cc9d55f802bb65ce90c0a184545d2ab6de",
+  "suma": "b94efabe95ee991f0a83ba30b5f85cea702cfca6c59ba3b751e984672d49dccc",
   "wymagana": false
 }
