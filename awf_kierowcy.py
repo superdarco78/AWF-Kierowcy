@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "6.6.0"
+VER = "6.7.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -820,7 +820,7 @@ class EkranPin(tk.Frame):
             karta=((6, 120, 80, 246), (2, 72, 48, 250)),
             klaw=((5, 110, 74, 250), (2, 66, 44, 252)),
             ok=((226, 204, 154, 250), (184, 150, 90, 252)),
-            napis=(255, 255, 255), napisOk=(16, 44, 31), pod=(198, 222, 210),
+            napis=(255, 255, 255), napisOk=(16, 44, 31), pod=(216, 235, 226),
             zloto=(232, 214, 176), kropka=(232, 214, 176),
             pusta=(150, 190, 170), c=(255, 150, 150), przyciemnij=84),
         "jasny": dict(
@@ -875,7 +875,7 @@ class EkranPin(tk.Frame):
         self.plotno.bind("<ButtonRelease-1>", self._pusc)
 
         self.rog = tk.Label(self, bd=0, bg=B["tlo2"], fg=B["zloto"],
-                            font=("Segoe UI", 9), padx=10, pady=4,
+                            font=("Segoe UI Semibold", 12), padx=14, pady=7,
                             text=self.wersja_napis)
         self.rog.place(relx=0.99, rely=0.98, anchor="se")
 
@@ -983,6 +983,33 @@ class EkranPin(tk.Frame):
                     obraz = None
         return obraz
 
+    def _zaslona(self, W, H):
+        """Miekka owalna zaslona pod trescia ekranu logowania.
+
+        Rysujemy ja w malej skali i powiekszamy — gradient wychodzi gladki,
+        a liczenie idzie szybko. Zasieg dobrany do wysokosci karty, zeby
+        zdjecie przy krawedziach ekranu zostalo nietkniete.
+        """
+        m = 96
+        maska = Image.new("L", (m, m), 0)
+        px = maska.load()
+        for y in range(m):
+            for x in range(m):
+                dx = (x - m / 2) / (m / 2)
+                dy = (y - m / 2) / (m / 2)
+                r = (dx * dx + dy * dy) ** 0.5
+                if r >= 1:
+                    continue
+                # 168 w srodku, gasnie do zera przy brzegu owalu
+                px[x, y] = int(168 * max(0.0, min(1.0, (1 - r) * 1.55)))
+        szer = int(min(W, (self.KW + 2 * self.MARG) * 2.1))
+        wys = int(min(H * 1.25, (self.KH + 2 * self.MARG) * 1.35))
+        maska = maska.resize((szer, wys), Image.LANCZOS)
+        warstwa = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ciemne = Image.new("RGBA", (szer, wys), (2, 14, 9, 255))
+        warstwa.paste(ciemne, ((W - szer) // 2, (H - wys) // 2), maska)
+        return warstwa
+
     def _na_zmiane(self, _e=None):
         try:
             self.update_idletasks()
@@ -1012,14 +1039,19 @@ class EkranPin(tk.Frame):
             gorny = max(0, int((nowy.height - H) * 0.45))
             kadr = nowy.crop((lewy, gorny, lewy + W, gorny + H)).convert("RGBA")
             M0 = self.MOTYW["jasny" if B["welon"] else "ciemny"]
+            # Kadr przyciemniamy lekko, zeby bylo widac kampus...
             kadr = Image.alpha_composite(
-                kadr, Image.new("RGBA", (W, H), (4, 14, 9, M0["przyciemnij"])))
-            # winieta — narozniki ciemniejsze, oko idzie do srodka
+                kadr, Image.new("RGBA", (W, H),
+                                (4, 14, 9, int(M0["przyciemnij"] * 0.62))))
+            # ...a ciemne podloze dajemy tylko tam, gdzie leza napisy.
+            # Pomiar: pod trescia jasnosc spada ze 100 na 37, wiec kontrast
+            # opisow rosnie z 4,6 do 11,3, a zdjecie dookola zostaje jasne.
+            kadr.alpha_composite(self._zaslona(W, H))
             win = Image.new("L", (W, H), 0)
             ImageDraw.Draw(win).ellipse(
                 [-W * 0.28, -H * 0.38, W * 1.28, H * 1.38], fill=255)
             win = win.filter(ImageFilter.GaussianBlur(
-                max(40, min(W, H) // 6))).point(lambda v: int((255 - v) * 0.34))
+                max(40, min(W, H) // 6))).point(lambda v: int((255 - v) * 0.30))
             kadr.paste(Image.new("RGBA", (W, H), (0, 0, 0, 255)), (0, 0), win)
             self._tlo_pil = kadr
             self._tlo_tk = ImageTk.PhotoImage(kadr.convert("RGB"))
@@ -1122,7 +1154,7 @@ class EkranPin(tk.Frame):
                anchor="mm")
         d.line([KW / 2 - p(50), ty + p(22), KW / 2 + p(50), ty + p(22)],
                fill=M0["zloto"] + (190,), width=max(1, p(1)))
-        cz_pod = self._czcionka(p(14))
+        cz_pod = self._czcionka(p(18))
         d.text((KW / 2 + p(1), ty + p(41)), PODTYTUL, font=cz_pod,
                fill=(0, 0, 0, 110), anchor="mm")
         d.text((KW / 2, ty + p(40)), PODTYTUL, font=cz_pod, fill=M0["pod"],
@@ -1140,8 +1172,8 @@ class EkranPin(tk.Frame):
                 d.ellipse([x - prom, ky, x + prom, ky + 2 * prom],
                           outline=M0["pusta"], width=max(2, p(2)))
         if self.info:
-            d.text((KW / 2, ky + p(26)), self.info,
-                   font=self._czcionka(p(11), True), fill=(255, 150, 150),
+            d.text((KW / 2, ky + p(30)), self.info,
+                   font=self._czcionka(p(15), True), fill=(255, 150, 150),
                    anchor="mm")
 
         # --- klawiatura ---
@@ -1193,15 +1225,15 @@ class EkranPin(tk.Frame):
             karta.alpha_composite(zaslona, (sx - p(12), self.SY - p(6)))
             gy2 = self.SY + p(30)
             d.text((KW / 2, gy2 + p(6)), "Dostępna nowa wersja",
-                   font=self._czcionka(p(15), True), fill=M0["zloto"],
+                   font=self._czcionka(p(18), True), fill=M0["zloto"],
                    anchor="mm")
-            d.text((KW / 2, gy2 + p(34)), self.pytanie["wersja"],
-                   font=self._czcionka(p(26), True), fill=(255, 255, 255),
+            d.text((KW / 2, gy2 + p(38)), self.pytanie["wersja"],
+                   font=self._czcionka(p(30), True), fill=(255, 255, 255),
                    anchor="mm")
-            d.text((KW / 2, gy2 + p(66)), "Wgrać teraz? Potrwa chwilę,",
-                   font=self._czcionka(p(12)), fill=(210, 228, 218), anchor="mm")
-            d.text((KW / 2, gy2 + p(84)), "program zamknie się i wróci sam.",
-                   font=self._czcionka(p(12)), fill=(210, 228, 218), anchor="mm")
+            d.text((KW / 2, gy2 + p(72)), "Wgrać teraz? Potrwa chwilę,",
+                   font=self._czcionka(p(15)), fill=(215, 232, 222), anchor="mm")
+            d.text((KW / 2, gy2 + p(94)), "program zamknie się i wróci sam.",
+                   font=self._czcionka(p(15)), fill=(215, 232, 222), anchor="mm")
             for i, (napis, klucz) in enumerate((("Wgraj teraz", "tak"),
                                                 ("Nie teraz", "nie"))):
                 gw, gh = szer - p(40), p(52)
@@ -1214,7 +1246,7 @@ class EkranPin(tk.Frame):
                 dg.rounded_rectangle([0, 0, gw - 1, gh - 1], radius=p(14),
                                      outline=M0["zloto"] + (110,), width=1)
                 dg.text((gw / 2, gh / 2), napis,
-                        font=self._czcionka(p(15), True),
+                        font=self._czcionka(p(18), True),
                         fill=M0["napisOk"] if glowny else M0["napis"],
                         anchor="mm")
                 karta.alpha_composite(grf, (gx, gyy))
@@ -1224,10 +1256,10 @@ class EkranPin(tk.Frame):
         py = self.SY + 4 * (self.KLH + self.ODST) + p(8)
         if self.postep_stan is not None:
             ulamek, opis = self.postep_stan
-            d.text((sx, py), opis, font=self._czcionka(p(12), True),
+            d.text((sx, py), opis, font=self._czcionka(p(15), True),
                    fill=M0["zloto"])
             d.text((sx + szer, py), f"{round(ulamek * 100)}%",
-                   font=self._czcionka(p(12), True), fill=M0["pod"], anchor="ra")
+                   font=self._czcionka(p(15), True), fill=M0["pod"], anchor="ra")
             d.rounded_rectangle([sx, py + p(22), sx + szer, py + p(29)],
                                 radius=p(4), fill=(0, 0, 0, 120))
             if ulamek > 0:
@@ -1235,7 +1267,7 @@ class EkranPin(tk.Frame):
                     [sx, py + p(22), sx + max(p(8), int(szer * ulamek)),
                      py + p(29)], radius=p(4), fill=M0["zloto"])
         else:
-            cz_st = self._czcionka(p(11))
+            cz_st = self._czcionka(p(15))
             if not self.z_karta:
                 d.text((KW / 2 + p(1), py + p(5)),
                        "PIN fabryczny 1234 — zmień po pierwszym logowaniu",
@@ -1244,11 +1276,11 @@ class EkranPin(tk.Frame):
                    "PIN fabryczny 1234 — zmień po pierwszym logowaniu",
                    font=cz_st, fill=M0["pod"], anchor="mm")
 
-        d.text((KW / 2, py + p(58)), "Nie pamiętam PIN-u",
-               font=self._czcionka(p(12)), fill=M0["zloto"], anchor="mm")
-        d.line([KW / 2 - p(63), py + p(69), KW / 2 + p(63), py + p(69)],
+        d.text((KW / 2, py + p(62)), "Nie pamiętam PIN-u",
+               font=self._czcionka(p(16)), fill=M0["zloto"], anchor="mm")
+        d.line([KW / 2 - p(82), py + p(76), KW / 2 + p(82), py + p(76)],
                fill=M0["zloto"] + (160,), width=max(1, p(1)))
-        self._odnosnik = (KW / 2 - p(70), py + p(46), p(140), p(30))
+        self._odnosnik = (KW / 2 - p(90), py + p(48), p(180), p(36))
 
         plotno.alpha_composite(karta, (M, M))
         karta = plotno
@@ -1605,8 +1637,28 @@ class App(tk.Tk):
         self._akt_stan = None
         self.after(1200, self._cicha_aktualizacja)
 
+        # Program w dyzurce nie moze zniknac przez przypadkowe klikniecie
+        # krzyzyka albo Alt+F4 — pytamy o potwierdzenie.
+        self._zamykam_sam = False
+        self.protocol("WM_DELETE_WINDOW", self.zamknij_program)
+
         self.bind("<F11>", lambda _e: self.pelny_ekran())
         self.bind("<Escape>", self._escape)
+
+    def zamknij_program(self):
+        """Pyta, zanim zamknie. Aktualizacja zamyka program po swojemu
+        i wtedy nie pytamy — ustawia znacznik przed wywolaniem destroy."""
+        if self._zamykam_sam:
+            self.destroy()
+            return
+        if messagebox.askyesno(
+                "Zamknąć program?",
+                "Zamknąć AWF KIEROWCY?\n\n"
+                "Zapora i szlabany przestaną być obsługiwane z tego "
+                "komputera do czasu ponownego uruchomienia.",
+                parent=self, default="no", icon="warning"):
+            self._zamykam_sam = True
+            self.destroy()
 
     def _escape(self, _e=None):
         """Escape wychodzi z pelnego ekranu, ale nie zamyka programu."""
@@ -3032,6 +3084,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         self.update_idletasks()
         import aktualizacje
         aktualizacje.uruchom_pomocnika(tresc)
+        self._zamykam_sam = True
         self.after(400, self.destroy)
 
     def _pytaj_o_restart(self, wersja):
@@ -3045,6 +3098,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
                 parent=self):
             import aktualizacje
             aktualizacje.uruchom_pomocnika(self._czeka_pomocnik)
+            self._zamykam_sam = True
             self.after(400, self.destroy)
         else:
             self._pasek_informacyjny(
