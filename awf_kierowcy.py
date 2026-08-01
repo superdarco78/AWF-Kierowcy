@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "6.5.0"
+VER = "6.6.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -831,10 +831,9 @@ class EkranPin(tk.Frame):
             zloto=(138, 110, 52), kropka=(3, 103, 68),
             pusta=(150, 178, 164), c=(179, 38, 38), przyciemnij=52),
     }
-    KW, KH, PROM = 440, 700, 22
-    KLW, KLH, ODST, KPROM = 118, 68, 13, 16
-    SY = 276
-    MARG = 70          # miejsce na cien dookola karty
+    PROM = 22
+    KPROM = 16
+    MARG = 70          # miejsce na cien dookola karty (przeliczane)
 
     def __init__(self, rodzic, sprawdz, po_zalogowaniu):
         super().__init__(rodzic, bg=B["tlo"])
@@ -844,14 +843,13 @@ class EkranPin(tk.Frame):
         # klawisze musza byc wieksze, bo nie maja tla, ktore je zbiera.
         dane = getattr(rodzic, "d", {}) or {}
         self.z_karta = bool(dane.get("karta_logowania", False))
-        if self.z_karta:
-            self.KW, self.KH = 440, 700
-            self.KLW, self.KLH, self.ODST = 118, 68, 13
-            self.SY = 276
-        else:
-            self.KW, self.KH = 470, 790
-            self.KLW, self.KLH, self.ODST = 132, 76, 16
-            self.SY = 300
+        # Wymiary podstawowe. Program przelicza je przy kazdej zmianie
+        # rozmiaru okna, zeby na duzym monitorze klawiatura byla duza,
+        # a na malym laptopie miescila sie w calosci.
+        self.BAZA = ((440, 700, 118, 68, 13, 276) if self.z_karta
+                     else (470, 790, 132, 76, 16, 300))
+        self._sr = 1.0
+        self._przelicz(1.0)
 
         self.wpisany = ""
         self.proby = 0
@@ -885,11 +883,21 @@ class EkranPin(tk.Frame):
         rodzic.bind("<Configure>", self._na_zmiane, add="+")
         self._pilnuj(0)
         self.bind_all("<Key>", self._klawisz)
-        self.after(60, self.rysuj)
+        self.after(60, self._na_zmiane)
 
     # ------------------------------------------------------------------
     # czcionki i ksztalty
     # ------------------------------------------------------------------
+
+    def _przelicz(self, mnoznik):
+        """Ustawia wszystkie wymiary na podany mnoznik."""
+        self._sr = mnoznik
+        kw, kh, klw, klh, od, sy = self.BAZA
+        r = lambda v: int(round(v * mnoznik))            # noqa: E731
+        self.KW, self.KH = r(kw), r(kh)
+        self.KLW, self.KLH, self.ODST = r(klw), r(klh), r(od)
+        self.SY = r(sy)
+        self.MARG = r(40)
 
     @staticmethod
     def _czcionka(px, gruby=False):
@@ -984,7 +992,12 @@ class EkranPin(tk.Frame):
         if W < 50 or H < 50 or (W, H) == self._rozmiar:
             return
         self._rozmiar = (W, H)
-        self._skala = min(1.0, (H - 20) / (self.KH + 2 * self.MARG))
+        # Caly ekran logowania ma zajmowac okolo 86% wysokosci okna.
+        # Ograniczenia z dolu i z gory pilnuja, zeby na malym ekranie
+        # dalo sie to obsluzyc palcem, a na duzym nie wygladalo jak plakat.
+        podstawa = self.BAZA[1] + 2 * 40
+        self._przelicz(max(0.55, min(2.2, (H * 0.96) / podstawa)))
+        self._skala = 1.0
 
         obraz = self._zdjecie_tla()
         if obraz is None:
@@ -1031,42 +1044,54 @@ class EkranPin(tk.Frame):
         return out
 
     def rysuj(self, _e=None):
+        """Rysuje caly ekran w rozmiarze policzonym od wysokosci okna.
+
+        Nic nie jest tu zmniejszane po fakcie — kazdy odstep, czcionka
+        i promien narozy powstaje juz w docelowej wielkosci. Dzieki temu
+        na monitorze 1920x1080 klawiatura jest duza i ostra, a na malym
+        laptopie miesci sie w calosci.
+        """
         try:
             if not self.winfo_exists():
                 return
         except tk.TclError:
             return
+        k = self._sr                      # mnoznik wielkosci
+        def p(v):                         # skrot: wartosc w pikselach ekranu
+            return int(round(v * k))
+
         M0 = self.MOTYW["jasny" if B["welon"] else "ciemny"]
         if not self.z_karta:
-            # Klawisze leza na zdjeciu, a nie na bialej karcie — napisy
-            # musza byc jasne takze w motywie jasnym.
             M0 = dict(self.MOTYW["ciemny"], przyciemnij=M0["przyciemnij"])
-        KW, KH, R = self.KW, self.KH, self.PROM
-        # Cien musi wyjsc POZA karte, wiec rysujemy na wiekszym plotnie
-        # z marginesem. Wczesniej lezal w srodku karty i byl niewidoczny.
+        KW, KH, R = self.KW, self.KH, p(self.PROM)
         M = self.MARG
+
         plotno = Image.new("RGBA", (KW + 2 * M, KH + 2 * M), (0, 0, 0, 0))
         karta = Image.new("RGBA", (KW, KH), (0, 0, 0, 0))
         if self.z_karta:
-            plotno.alpha_composite(self._cien((KW, KH), R, 30, 100, 20),
-                                   (M - 60, M - 60))
-            plotno.alpha_composite(self._cien((KW, KH), R, 10, 130, 6),
-                                   (M - 20, M - 20))
+            plotno.alpha_composite(
+                self._cien((KW, KH), R, p(30), 100, p(20)),
+                (M - p(60), M - p(60)))
+            plotno.alpha_composite(
+                self._cien((KW, KH), R, p(10), 130, p(6)),
+                (M - p(20), M - p(20)))
             karta.alpha_composite(self._przejscie((KW, KH), *M0["karta"], R))
         d = ImageDraw.Draw(karta)
         if self.z_karta:
             d.rounded_rectangle([0, 0, KW - 1, KH - 1], radius=R,
                                 outline=M0["zloto"] + (190,), width=1)
-            d.line([R + 8, 1, KW - R - 8, 1], fill=(255, 255, 255, 60),
-                   width=1)
+            d.line([R + p(8), 1, KW - R - p(8), 1],
+                   fill=(255, 255, 255, 60), width=1)
 
-        # godlo z poswiata i zlotym pierscieniem
-        pos = Image.new("RGBA", (168, 168), (0, 0, 0, 0))
-        ImageDraw.Draw(pos).ellipse([26, 26, 142, 142],
-                                    fill=(255, 255, 255, 40) if not B["welon"]
-                                    else (3, 103, 68, 34))
-        karta.alpha_composite(pos.filter(ImageFilter.GaussianBlur(17)),
-                              ((KW - 168) // 2, 14 if self.z_karta else 22))
+        # --- godlo ---
+        gr = p(100 if self.z_karta else 116)
+        gy = p(40)
+        pos = Image.new("RGBA", (int(gr * 1.7),) * 2, (0, 0, 0, 0))
+        ImageDraw.Draw(pos).ellipse(
+            [gr * 0.26, gr * 0.26, gr * 1.44, gr * 1.44],
+            fill=(255, 255, 255, 40) if not B["welon"] else (3, 103, 68, 34))
+        karta.alpha_composite(pos.filter(ImageFilter.GaussianBlur(p(17))),
+                              ((KW - pos.width) // 2, gy - int(gr * 0.35)))
         godlo = None
         try:
             from tlo_wbudowane import godlo as godlo_z_kodu
@@ -1081,75 +1106,77 @@ class EkranPin(tk.Frame):
                 except (OSError, ValueError):
                     godlo = None
         if godlo is not None:
-            gr = 100 if self.z_karta else 116
             karta.alpha_composite(godlo.resize((gr, gr), Image.LANCZOS),
-                                  ((KW - gr) // 2, 40))
-        pier = 108 if self.z_karta else 126
-        d.ellipse([(KW - pier) // 2, 35, (KW + pier) // 2, 35 + pier],
-                  outline=M0["zloto"] + (150,), width=1)
+                                  ((KW - gr) // 2, gy))
+        pier = int(gr * 1.09)
+        d.ellipse([(KW - pier) // 2, gy - p(5),
+                   (KW + pier) // 2, gy - p(5) + pier],
+                  outline=M0["zloto"] + (150,), width=max(1, p(1)))
 
-        ty = 182 if self.z_karta else 204
-        # Nazwa zlotem uczelni — jedyny napis w tej barwie, wiec od razu
-        # wiadomo, gdzie patrzec. Cien pod spodem odkleja ja od zdjecia.
-        d.text((KW / 2 + 1, ty + 1), NAZWA,
-               font=self._czcionka(27 if self.z_karta else 31, True),
+        # --- nazwa i podtytul ---
+        ty = gy + gr + p(42)
+        cz_nazwa = self._czcionka(p(27 if self.z_karta else 31), True)
+        d.text((KW / 2 + p(1), ty + p(1)), NAZWA, font=cz_nazwa,
                fill=(0, 0, 0, 130), anchor="mm")
-        d.text((KW / 2, ty), NAZWA,
-               font=self._czcionka(27 if self.z_karta else 31, True),
-               fill=M0["zloto"], anchor="mm")
-        d.line([KW / 2 - 50, ty + 22, KW / 2 + 50, ty + 22],
-               fill=M0["zloto"] + (190,), width=1)
-        d.text((KW / 2 + 1, ty + 41), PODTYTUL, font=self._czcionka(14),
+        d.text((KW / 2, ty), NAZWA, font=cz_nazwa, fill=M0["zloto"],
+               anchor="mm")
+        d.line([KW / 2 - p(50), ty + p(22), KW / 2 + p(50), ty + p(22)],
+               fill=M0["zloto"] + (190,), width=max(1, p(1)))
+        cz_pod = self._czcionka(p(14))
+        d.text((KW / 2 + p(1), ty + p(41)), PODTYTUL, font=cz_pod,
                fill=(0, 0, 0, 110), anchor="mm")
-        d.text((KW / 2, ty + 40), PODTYTUL, font=self._czcionka(14),
-               fill=M0["pod"], anchor="mm")
+        d.text((KW / 2, ty + p(40)), PODTYTUL, font=cz_pod, fill=M0["pod"],
+               anchor="mm")
 
-        # kropki PIN-u — wypelnione tyle, ile cyfr wpisano
-        ky = 236 if self.z_karta else 262
+        # --- kropki PIN-u ---
+        ky = ty + p(58)
+        prom = p(7)
         for i in range(max(4, len(self.wpisany))):
-            x = KW / 2 - 36 + i * 24
+            x = KW / 2 - p(36) + i * p(24)
             if i < len(self.wpisany):
-                d.ellipse([x - 7, ky, x + 7, ky + 14], fill=M0["kropka"])
+                d.ellipse([x - prom, ky, x + prom, ky + 2 * prom],
+                          fill=M0["kropka"])
             else:
-                d.ellipse([x - 7, ky, x + 7, ky + 14],
-                          outline=M0["pusta"], width=2)
-
+                d.ellipse([x - prom, ky, x + prom, ky + 2 * prom],
+                          outline=M0["pusta"], width=max(2, p(2)))
         if self.info:
-            d.text((KW / 2, ky + 26), self.info, font=self._czcionka(11, True),
-                   fill=(255, 150, 150), anchor="mm")
+            d.text((KW / 2, ky + p(26)), self.info,
+                   font=self._czcionka(p(11), True), fill=(255, 150, 150),
+                   anchor="mm")
 
+        # --- klawiatura ---
         blok = (self.zablokowany or self.blokada_aktualizacji
                 or self.pytanie is not None)
+        KPR = p(self.KPROM)
         for x, y, kw, kh, znak in self._prostokaty():
             wcisniety = self._wcisniety == znak
-            karta.alpha_composite(self._cien((kw, kh), self.KPROM, 6,
-                                             60 if wcisniety else 120, 3),
-                                  (x - 12, y - 12))
+            karta.alpha_composite(
+                self._cien((kw, kh), KPR, p(6), 60 if wcisniety else 120, p(3)),
+                (x - p(12), y - p(12)))
             if znak == "OK":
                 gora, dol = M0["ok"]
-                barwa, fnt = M0["napisOk"], self._czcionka(21, True)
+                barwa = M0["napisOk"]
+                fnt = self._czcionka(p(21 if self.z_karta else 23), True)
             else:
                 gora, dol = M0["klaw"]
-                fnt = self._czcionka(25 if self.z_karta else 27, True)
+                fnt = self._czcionka(p(25 if self.z_karta else 27), True)
                 barwa = M0["c"] if znak == "C" else M0["napis"]
-            if wcisniety:                      # wcisniety = odwrocone swiatlo
+            if wcisniety:
                 gora, dol = dol, gora
-            kl = self._przejscie((kw, kh), gora, dol, self.KPROM)
+            kl = self._przejscie((kw, kh), gora, dol, KPR)
             if blok:
                 kl = Image.blend(kl, Image.new("RGBA", (kw, kh), (0, 0, 0, 190)),
                                  0.45)
                 barwa = tuple(int(c * 0.55) + 40 for c in barwa)
             dl = ImageDraw.Draw(kl)
-            dl.rounded_rectangle([0, 0, kw - 1, kh - 1], radius=self.KPROM,
+            dl.rounded_rectangle([0, 0, kw - 1, kh - 1], radius=KPR,
                                  outline=M0["zloto"] + (90,), width=1)
             if not wcisniety:
-                dl.line([self.KPROM, 1, kw - self.KPROM, 1],
-                        fill=(255, 255, 255, 70), width=1)
+                dl.line([KPR, 1, kw - KPR, 1], fill=(255, 255, 255, 70), width=1)
                 dl.arc([2, 2, kw - 3, kh // 2], 190, 350,
                        fill=(255, 255, 255, 26), width=1)
-            dl.line([self.KPROM, kh - 2, kw - self.KPROM, kh - 2],
-                    fill=(0, 0, 0, 110), width=1)
-            dl.text((kw / 2, kh / 2 + 1), znak, font=fnt,
+            dl.line([KPR, kh - 2, kw - KPR, kh - 2], fill=(0, 0, 0, 110), width=1)
+            dl.text((kw / 2, kh / 2 + p(1)), znak, font=fnt,
                     fill=(0, 0, 0, 110), anchor="mm")
             dl.text((kw / 2, kh / 2), znak, font=fnt, fill=barwa, anchor="mm")
             karta.alpha_composite(kl, (x, y))
@@ -1157,85 +1184,80 @@ class EkranPin(tk.Frame):
         szer = 3 * self.KLW + 2 * self.ODST
         sx = (KW - szer) // 2
 
-        # Pytanie o aktualizacje zaslania klawiature — dyzurny ma odpowiedziec
-        # zanim zacznie wpisywac PIN, a nie w trakcie.
+        # --- pytanie o aktualizacje zamiast klawiatury ---
         self._guziki = []
         if self.pytanie is not None:
-            gy = self.SY + 30
-            zaslona = Image.new("RGBA", (szer + 24, 4 * (self.KLH + self.ODST)),
-                                (0, 0, 0, 150))
-            karta.alpha_composite(
-                Image.alpha_composite(
-                    Image.new("RGBA", zaslona.size, (0, 0, 0, 0)),
-                    self._przejscie(zaslona.size, (0, 0, 0, 170),
-                                    (0, 0, 0, 200), 16)),
-                (sx - 12, self.SY - 6))
-            d.text((KW / 2, gy + 6), "Dostępna nowa wersja",
-                   font=self._czcionka(15, True), fill=M0["zloto"], anchor="mm")
-            d.text((KW / 2, gy + 34), self.pytanie["wersja"],
-                   font=self._czcionka(26, True), fill=(255, 255, 255),
+            wys = 4 * (self.KLH + self.ODST)
+            zaslona = self._przejscie((szer + p(24), wys), (0, 0, 0, 170),
+                                      (0, 0, 0, 200), p(16))
+            karta.alpha_composite(zaslona, (sx - p(12), self.SY - p(6)))
+            gy2 = self.SY + p(30)
+            d.text((KW / 2, gy2 + p(6)), "Dostępna nowa wersja",
+                   font=self._czcionka(p(15), True), fill=M0["zloto"],
                    anchor="mm")
-            d.text((KW / 2, gy + 66), "Wgrać teraz? Potrwa chwilę,",
-                   font=self._czcionka(12), fill=(210, 228, 218), anchor="mm")
-            d.text((KW / 2, gy + 84), "program zamknie się i wróci sam.",
-                   font=self._czcionka(12), fill=(210, 228, 218), anchor="mm")
+            d.text((KW / 2, gy2 + p(34)), self.pytanie["wersja"],
+                   font=self._czcionka(p(26), True), fill=(255, 255, 255),
+                   anchor="mm")
+            d.text((KW / 2, gy2 + p(66)), "Wgrać teraz? Potrwa chwilę,",
+                   font=self._czcionka(p(12)), fill=(210, 228, 218), anchor="mm")
+            d.text((KW / 2, gy2 + p(84)), "program zamknie się i wróci sam.",
+                   font=self._czcionka(p(12)), fill=(210, 228, 218), anchor="mm")
             for i, (napis, klucz) in enumerate((("Wgraj teraz", "tak"),
                                                 ("Nie teraz", "nie"))):
-                gw, gh = szer - 40, 52
-                gx = sx + 20
-                gyy = gy + 112 + i * (gh + 12)
+                gw, gh = szer - p(40), p(52)
+                gx = sx + p(20)
+                gyy = gy2 + p(112) + i * (gh + p(12))
                 glowny = klucz == "tak"
-                gr = self._przejscie(
-                    (gw, gh), *(M0["ok"] if glowny else M0["klaw"]), 14)
-                dg = ImageDraw.Draw(gr)
-                dg.rounded_rectangle([0, 0, gw - 1, gh - 1], radius=14,
+                grf = self._przejscie(
+                    (gw, gh), *(M0["ok"] if glowny else M0["klaw"]), p(14))
+                dg = ImageDraw.Draw(grf)
+                dg.rounded_rectangle([0, 0, gw - 1, gh - 1], radius=p(14),
                                      outline=M0["zloto"] + (110,), width=1)
-                dg.text((gw / 2, gh / 2), napis, font=self._czcionka(15, True),
+                dg.text((gw / 2, gh / 2), napis,
+                        font=self._czcionka(p(15), True),
                         fill=M0["napisOk"] if glowny else M0["napis"],
                         anchor="mm")
-                karta.alpha_composite(gr, (gx, gyy))
+                karta.alpha_composite(grf, (gx, gyy))
                 self._guziki.append((gx, gyy, gw, gh, klucz))
 
-        py = self.SY + 4 * (self.KLH + self.ODST) + 8
+        # --- pasek postepu albo napis o PIN-ie fabrycznym ---
+        py = self.SY + 4 * (self.KLH + self.ODST) + p(8)
         if self.postep_stan is not None:
             ulamek, opis = self.postep_stan
-            d.text((sx, py), opis, font=self._czcionka(12, True),
+            d.text((sx, py), opis, font=self._czcionka(p(12), True),
                    fill=M0["zloto"])
             d.text((sx + szer, py), f"{round(ulamek * 100)}%",
-                   font=self._czcionka(12, True), fill=M0["pod"], anchor="ra")
-            d.rounded_rectangle([sx, py + 22, sx + szer, py + 29], radius=4,
-                                fill=(0, 0, 0, 120))
+                   font=self._czcionka(p(12), True), fill=M0["pod"], anchor="ra")
+            d.rounded_rectangle([sx, py + p(22), sx + szer, py + p(29)],
+                                radius=p(4), fill=(0, 0, 0, 120))
             if ulamek > 0:
                 d.rounded_rectangle(
-                    [sx, py + 22, sx + max(8, int(szer * ulamek)), py + 29],
-                    radius=4, fill=M0["zloto"])
+                    [sx, py + p(22), sx + max(p(8), int(szer * ulamek)),
+                     py + p(29)], radius=p(4), fill=M0["zloto"])
         else:
+            cz_st = self._czcionka(p(11))
             if not self.z_karta:
-                d.text((KW / 2 + 1, py + 5), "PIN fabryczny 1234 — zmień po "
-                       "pierwszym logowaniu", font=self._czcionka(11),
-                       fill=(0, 0, 0, 120), anchor="mm")
-            d.text((KW / 2, py + 4), "PIN fabryczny 1234 — zmień po pierwszym "
-                   "logowaniu", font=self._czcionka(11),
-                   fill=M0["pod"], anchor="mm")
-        d.text((KW / 2, py + 58), "Nie pamiętam PIN-u",
-               font=self._czcionka(12), fill=M0["zloto"], anchor="mm")
-        d.line([KW / 2 - 63, py + 69, KW / 2 + 63, py + 69],
-               fill=M0["zloto"] + (160,), width=1)
-        self._odnosnik = (KW / 2 - 70, py + 46, 140, 30)
+                d.text((KW / 2 + p(1), py + p(5)),
+                       "PIN fabryczny 1234 — zmień po pierwszym logowaniu",
+                       font=cz_st, fill=(0, 0, 0, 120), anchor="mm")
+            d.text((KW / 2, py + p(4)),
+                   "PIN fabryczny 1234 — zmień po pierwszym logowaniu",
+                   font=cz_st, fill=M0["pod"], anchor="mm")
+
+        d.text((KW / 2, py + p(58)), "Nie pamiętam PIN-u",
+               font=self._czcionka(p(12)), fill=M0["zloto"], anchor="mm")
+        d.line([KW / 2 - p(63), py + p(69), KW / 2 + p(63), py + p(69)],
+               fill=M0["zloto"] + (160,), width=max(1, p(1)))
+        self._odnosnik = (KW / 2 - p(70), py + p(46), p(140), p(30))
 
         plotno.alpha_composite(karta, (M, M))
         karta = plotno
-        if self._skala < 0.999:
-            nowy = (max(1, int(karta.width * self._skala)),
-                    max(1, int(karta.height * self._skala)))
-            karta = karta.resize(nowy, Image.LANCZOS)
 
-        # sklejamy z tlem, bo tkinter nie znosi przezroczystosci w Label
-        podklad = Image.new("RGBA", karta.size, (0, 0, 0, 0))
+        # sklejamy z tlem — tkinter nie znosi przezroczystosci w Label
         if self._tlo_tk is not None and getattr(self, "_tlo_pil", None):
             W, H = self._rozmiar
-            lx = (W - karta.width) // 2
-            ly = (H - karta.height) // 2
+            lx = max(0, (W - karta.width) // 2)
+            ly = max(0, (H - karta.height) // 2)
             podklad = self._tlo_pil.crop(
                 (lx, ly, lx + karta.width, ly + karta.height))
         else:
@@ -1256,8 +1278,7 @@ class EkranPin(tk.Frame):
         Obrazek jest wiekszy od karty o margines na cien, a przy malym
         ekranie jeszcze przeskalowany — jedno i drugie trzeba odjac.
         """
-        return (e.x / max(0.01, self._skala) - self.MARG,
-                e.y / max(0.01, self._skala) - self.MARG)
+        return e.x - self.MARG, e.y - self.MARG
 
     def _wcisnij(self, e):
         if self.pytanie is not None:
