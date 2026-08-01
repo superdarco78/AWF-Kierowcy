@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "6.7.0"
+VER = "6.9.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -465,6 +465,10 @@ class Scena(tk.Canvas):
         self.modul = "LTE · 77%"
         self.zablokowana = False
         self.on_przycisk = None
+        # Tryb czysty: scena rysuje samo zdjecie, bez paneli i przyciskow
+        # malowanych na plotnie. Stan i polecenia sa osobnymi widgetami
+        # obok — na zdjeciu nie da sie ich ulozyc czytelnie.
+        self.czysta = False
         self._kiosk = None
         self._cache = {}
         self._trzymaj = []
@@ -540,6 +544,12 @@ class Scena(tk.Canvas):
 
         naklad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         d = ImageDraw.Draw(naklad)
+        if self.czysta:
+            gotowe = kadr.convert("RGB")
+            self._kiosk = {"W": W, "H": H, "sk": sk, "kx": kx, "ky": ky,
+                           "uklad": LP, "tk": ImageTk.PhotoImage(gotowe)}
+            self._cache = {}
+            return
         d.rounded_rectangle(list(LP["tytul"]), radius=11, fill=B["panel"],
                             outline=B["panelRamka"], width=1)
         kx1, ky1, kx2, ky2 = LP["kafle"]
@@ -675,6 +685,9 @@ class Scena(tk.Canvas):
         }.get(self.faza, ("GOTOWA", B["tekst"]))
 
     def _hud(self, LP, W, H):
+        if self.czysta:
+            self.przyciski = []
+            return
         x1, y1, x2, y2 = LP["tytul"]
         self.create_text(x1 + 16, (y1 + y2) / 2 - 1,
                          text=self.nazwa_obiektu.upper(), anchor="w",
@@ -736,6 +749,56 @@ class Scena(tk.Canvas):
 # ==========================================================================
 # ekran logowania
 # ==========================================================================
+
+def okno_pytania(rodzic, tytul, tresc, tak="Tak", nie="Nie", ostrzezenie=False):
+    """Pytanie w barwach uczelni zamiast systemowego okienka Windows.
+
+    Systemowe okno wygląda obco: szare tło, inna czcionka, inne przyciski.
+    To trzyma się palety programu i wraca True albo False.
+    """
+    w = tk.Toplevel(rodzic)
+    w.title(tytul)
+    w.configure(bg=B["tlo2"])
+    w.resizable(False, False)
+    w.transient(rodzic.winfo_toplevel())
+    w.grab_set()
+    odpowiedz = {"tak": False}
+
+    tk.Frame(w, bg=B["alarm"] if ostrzezenie else B["akcent"],
+             height=4).pack(fill="x")
+    r = tk.Frame(w, bg=B["tlo2"], padx=32, pady=26)
+    r.pack(fill="both", expand=True)
+    tk.Label(r, text=tytul, bg=B["tlo2"], fg=B["tekst"],
+             font=("Segoe UI Semibold", 16)).pack(anchor="w")
+    tk.Label(r, text=tresc, bg=B["tlo2"], fg=B["tekst2"], justify="left",
+             font=("Segoe UI", 11), wraplength=440).pack(anchor="w", pady=(10, 0))
+
+    guziki = tk.Frame(r, bg=B["tlo2"])
+    guziki.pack(fill="x", pady=(22, 0))
+
+    def zamknij(wynik):
+        odpowiedz["tak"] = wynik
+        w.destroy()
+
+    tk.Button(guziki, text=tak, command=lambda: zamknij(True), relief="flat",
+              bd=0, cursor="hand2", bg=B["zloto"], fg="#16301f",
+              activebackground=B["zloto2"], font=("Segoe UI Semibold", 11),
+              padx=24, pady=11).pack(side="right")
+    tk.Button(guziki, text=nie, command=lambda: zamknij(False), relief="flat",
+              bd=0, cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+              activebackground=B["linia"], font=("Segoe UI", 11),
+              padx=22, pady=11).pack(side="right", padx=(0, 10))
+
+    w.bind("<Escape>", lambda _e: zamknij(False))
+    w.bind("<Return>", lambda _e: zamknij(True))
+    w.update_idletasks()
+    g = rodzic.winfo_toplevel()
+    x = g.winfo_rootx() + (g.winfo_width() - w.winfo_width()) // 2
+    y = g.winfo_rooty() + (g.winfo_height() - w.winfo_height()) // 3
+    w.geometry(f"+{max(0, x)}+{max(0, y)}")
+    w.wait_window()
+    return odpowiedz["tak"]
+
 
 def okno_tresci(rodzic, tytul, wiersze, szerokosc=520):
     """Okno z trescia w barwach programu — zamiast systemowego komunikatu.
@@ -1651,12 +1714,12 @@ class App(tk.Tk):
         if self._zamykam_sam:
             self.destroy()
             return
-        if messagebox.askyesno(
-                "Zamknąć program?",
-                "Zamknąć AWF KIEROWCY?\n\n"
+        if okno_pytania(
+                self, "Zamknąć program?",
                 "Zapora i szlabany przestaną być obsługiwane z tego "
                 "komputera do czasu ponownego uruchomienia.",
-                parent=self, default="no", icon="warning"):
+                tak="Zamknij program", nie="Zostaw otwarty",
+                ostrzezenie=True):
             self._zamykam_sam = True
             self.destroy()
 
@@ -1962,10 +2025,7 @@ class App(tk.Tk):
         self.tresc.pack(fill="both", expand=True)
 
         self.widoki = {}
-        self.scena = Scena(self.tresc)
-        self.scena.material = self.scena.wczytaj_material()
-        self.scena.on_przycisk = self.przycisk_sceny
-        self.widoki["podglad"] = self.scena
+        self.widoki["podglad"] = self._buduj_podglad()
         for klucz in ("kierowcy", "sterownik", "historia", "ustawienia"):
             self.widoki[klucz] = tk.Frame(self.tresc, bg=B["tlo"])
 
@@ -1987,6 +2047,140 @@ class App(tk.Tk):
 
         self.przelacz("podglad")
         self._zmien_obiekt()
+
+    def _buduj_podglad(self):
+        """Uklad podgladu: kafle obiektow po lewej, scena i polecenia po prawej.
+
+        Wczesniej wszystko bylo malowane na zdjeciu — panele, stan i przyciski.
+        Na ruchliwym zdjeciu napisy gubily sie w kostce brukowej, dlatego
+        teraz zdjecie jest tylko zdjeciem, a reszta to zwykle widgety.
+        """
+        ram = tk.Frame(self.tresc, bg=B["tlo"])
+        ram.columnconfigure(1, weight=1)
+        ram.rowconfigure(0, weight=1)
+
+        # --- lewa kolumna: kafle obiektow ---
+        lewa = tk.Frame(ram, bg=B["tlo"], width=300)
+        lewa.grid(row=0, column=0, sticky="ns", padx=(14, 10), pady=14)
+        lewa.grid_propagate(False)
+        tk.Label(lewa, text="OBIEKTY", bg=B["tlo"], fg=B["zloto"],
+                 font=("Segoe UI Semibold", 10)).pack(anchor="w", pady=(0, 10))
+
+        self.kafle = []
+        for nr, o in enumerate(self.d["obiekty"]):
+            k = tk.Frame(lewa, bg=B["tlo2"], highlightthickness=1,
+                         highlightbackground=B["tlo2"], cursor="hand2")
+            k.pack(fill="x", pady=(0, 10))
+            wn = tk.Frame(k, bg=B["tlo2"], padx=16, pady=14)
+            wn.pack(fill="x")
+            lam = tk.Canvas(wn, width=16, height=16, bg=B["tlo2"],
+                            highlightthickness=0)
+            lam.pack(side="left", padx=(0, 12))
+            kropka = lam.create_oval(2, 2, 14, 14, fill=B["ok"], outline="")
+            opis = tk.Frame(wn, bg=B["tlo2"])
+            opis.pack(side="left", fill="x", expand=True)
+            nazwa = tk.Label(opis, text=o["nazwa"], bg=B["tlo2"], fg=B["tekst"],
+                             font=("Segoe UI Semibold", 13), anchor="w")
+            nazwa.pack(anchor="w")
+            stan = tk.Label(opis, text="—", bg=B["tlo2"], fg=B["przygasz"],
+                            font=("Segoe UI", 10), anchor="w")
+            stan.pack(anchor="w")
+            for widget in (k, wn, lam, opis, nazwa, stan):
+                widget.bind("<Button-1>", lambda _e, n=nr: self.wybierz_obiekt(n))
+            self.kafle.append({"ramka": k, "lampka": lam, "kropka": kropka,
+                               "nazwa": nazwa, "stan": stan,
+                               "tlo": (k, wn, lam, opis, nazwa, stan)})
+
+        # --- prawa strona: karta z nazwa, scena i poleceniami ---
+        prawa = tk.Frame(ram, bg=B["tlo2"], highlightthickness=1,
+                         highlightbackground=B["zloto2"])
+        prawa.grid(row=0, column=1, sticky="nsew", padx=(0, 14), pady=14)
+        prawa.rowconfigure(1, weight=1)
+        prawa.columnconfigure(0, weight=1)
+
+        gora = tk.Frame(prawa, bg=B["tlo2"], padx=18, pady=14)
+        gora.grid(row=0, column=0, sticky="ew")
+        self.lam_stan = tk.Canvas(gora, width=18, height=18, bg=B["tlo2"],
+                                  highlightthickness=0)
+        self.lam_stan.pack(side="left", padx=(0, 12))
+        self._kropka_stan = self.lam_stan.create_oval(2, 2, 16, 16,
+                                                      fill=B["ok"], outline="")
+        self.lbl_obiekt = tk.Label(gora, text="", bg=B["tlo2"], fg=B["tekst"],
+                                   font=("Segoe UI Semibold", 20))
+        self.lbl_obiekt.pack(side="left")
+        self.lbl_stan = tk.Label(gora, text="", bg=B["tlo3"], fg=B["tekst"],
+                                 font=("Segoe UI Semibold", 11), padx=16, pady=6)
+        self.lbl_stan.pack(side="right")
+        self.lbl_miejsce = tk.Label(gora, text="", bg=B["tlo2"],
+                                    fg=B["przygasz"], font=("Segoe UI", 11))
+        self.lbl_miejsce.pack(side="right", padx=14)
+
+        self.scena = Scena(prawa)
+        self.scena.czysta = True
+        self.scena.material = self.scena.wczytaj_material()
+        self.scena.on_przycisk = self.przycisk_sceny
+        self.scena.grid(row=1, column=0, sticky="nsew", padx=18)
+
+        dol = tk.Frame(prawa, bg=B["tlo2"], padx=18, pady=16)
+        dol.grid(row=2, column=0, sticky="ew")
+        for i in range(4):
+            dol.columnconfigure(i, weight=1, uniform="polecenia")
+        self.polecenia = []
+        opisy = [("Wpuść pojazd", 0, True), ("Otwórz na stałe", 1, False),
+                 ("Zamknij", 2, False), ("Blokada", 3, False)]
+        for kol, (tekst, nr, glowny) in enumerate(opisy):
+            b = tk.Button(
+                dol, text=tekst, relief="flat", bd=0, cursor="hand2",
+                font=("Segoe UI Semibold", 14), pady=18,
+                bg=B["zloto"] if glowny else B["tlo3"],
+                fg=B["naPanelu"] if not glowny else "#16301f",
+                activebackground=B["zloto2"] if glowny else B["linia"],
+                activeforeground=B["tekst"] if not glowny else "#16301f",
+                command=lambda n=nr: self.przycisk_sceny(n))
+            b.grid(row=0, column=kol, sticky="ew", padx=6)
+            self.polecenia.append(b)
+        return ram
+
+    def wybierz_obiekt(self, nr):
+        """Klikniecie w kafel obiektu."""
+        if nr == self.obiekt:
+            return
+        if hasattr(self, "wyb_obiekt"):
+            self.wyb_obiekt.current(nr)
+        self._zmien_obiekt(wybrany=nr)
+
+    def odswiez_kafle(self):
+        """Lampki i napisy na kaflach oraz plakietka stanu nad scena."""
+        if not hasattr(self, "kafle"):
+            return
+        opis, kolor = self.scena._stan()
+        for nr, k in enumerate(self.kafle):
+            wybrany = nr == self.obiekt
+            tlo = B["tlo3"] if wybrany else B["tlo2"]
+            for w in k["tlo"]:
+                try:
+                    w.configure(bg=tlo)
+                except tk.TclError:
+                    pass
+            k["ramka"].configure(highlightbackground=B["zloto"] if wybrany else tlo)
+            o = self.d["obiekty"][nr]
+            s = self.stany[o["id"]]
+            if wybrany:
+                barwa, tekst = kolor, opis
+            elif s["blokada"]:
+                barwa, tekst = B["alarm"], "BLOKADA"
+            elif s["postep"] < 0.5:
+                barwa, tekst = B["uwaga"], "OTWARTE"
+            else:
+                barwa, tekst = B["ok"], "ZAMKNIĘTE"
+            k["lampka"].itemconfigure(k["kropka"], fill=barwa)
+            k["stan"].configure(text=tekst.capitalize(), fg=barwa)
+        self.lam_stan.itemconfigure(self._kropka_stan, fill=kolor)
+        self.lbl_stan.configure(text=opis, fg=kolor)
+        self.polecenia[2].configure(
+            text="Zamknij" if self.scena.typ == "slupki" else "Opuść")
+        self.polecenia[3].configure(
+            text="Zdejmij blokadę" if self.scena.zablokowana else "Blokada")
 
     def przelacz(self, klucz):
         for w in self.widoki.values():
@@ -2218,8 +2412,8 @@ class App(tk.Tk):
             w, text=f"Wersja programu: {VER}  ·  jeszcze nie sprawdzano",
             bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 10))
         self.lbl_akt.pack(anchor="w", padx=24)
-        tk.Label(w, text="Program sprawdza aktualizacje sam, na ekranie "
-                         "logowania — zanim ktokolwiek wpisze PIN.",
+        tk.Label(w, text="Program sprawdza aktualizacje na ekranie logowania "
+                         "i za każdym razem pyta, zanim cokolwiek wgra.",
                  bg=B["tlo"], fg=B["przygasz"],
                  font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(4, 0))
 
@@ -2230,12 +2424,13 @@ class App(tk.Tk):
         self.lbl_auto.pack(side="left", padx=(0, 12))
 
         def przelacz_auto():
-            self.d["auto_aktualizacja"] = not self.d.get("auto_aktualizacja")
+            self.d["sprawdzaj_aktualizacje"] = not self.d.get(
+                "sprawdzaj_aktualizacje", True)
             zapisz(self.d)
             odswiez_auto()
-
-            self.log("wgrywanie bez pytania: "
-                     + ("włączone" if self.d["auto_aktualizacja"] else "wyłączone"))
+            self.log("sprawdzanie aktualizacji: "
+                     + ("włączone" if self.d["sprawdzaj_aktualizacje"]
+                        else "wyłączone"))
 
         b_auto = tk.Button(r_auto, command=przelacz_auto, relief="flat", bd=0,
                            cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
@@ -2243,10 +2438,10 @@ class App(tk.Tk):
         b_auto.pack(side="left")
 
         def odswiez_auto():
-            wlaczone = bool(self.d.get("auto_aktualizacja"))
+            wlaczone = bool(self.d.get("sprawdzaj_aktualizacje", True))
             self.lbl_auto.configure(
-                text=("Nowe wersje wgrywają się bez pytania"
-                      if wlaczone else "Program pyta przed wgraniem"),
+                text=("Sprawdza nowe wersje przy uruchomieniu"
+                      if wlaczone else "Nie sprawdza nowych wersji"),
                 fg=B["ok"] if wlaczone else B["przygasz"])
             b_auto.configure(text="Wyłącz" if wlaczone else "Włącz")
 
@@ -2298,12 +2493,15 @@ class App(tk.Tk):
         except tk.TclError:
             pass
 
-    def _zmien_obiekt(self, _=None):
+    def _zmien_obiekt(self, _=None, wybrany=None):
         stary = self.d["obiekty"][self.obiekt]["id"]
         self.stany[stary] = {"postep": self.scena.postep,
                              "faza": self.scena.faza,
                              "blokada": self.scena.zablokowana}
-        self.obiekt = self.wyb_obiekt.current() if hasattr(self, "wyb_obiekt") else 0
+        if wybrany is not None:
+            self.obiekt = wybrany
+        elif hasattr(self, "wyb_obiekt"):
+            self.obiekt = self.wyb_obiekt.current()
         o = self.d["obiekty"][self.obiekt]
         s = self.stany[o["id"]]
         self.scena.typ = o["typ"]
@@ -2317,17 +2515,86 @@ class App(tk.Tk):
             and w.get("data") == datetime.now().strftime("%d.%m.%Y"))
         self.scena._kiosk = None
         self.log(f'obiekt: {o["nazwa"]} — {o["miejsce"]}')
+        if hasattr(self, "lbl_obiekt"):
+            self.lbl_obiekt.configure(text=o["nazwa"])
+            self.lbl_miejsce.configure(text=o["miejsce"])
+        self.odswiez_kafle()
         self.scena.rysuj()
 
     def przycisk_sceny(self, nr):
+        """Polecenie z przycisku — z pytaniem i sprawdzeniem stanu.
+
+        Dwa razy tego samego nie robimy: jesli zapora jest juz otwarta na
+        stale, drugie "Otworz na stale" nic nie zmieni, a wyslalo by kolejny
+        impuls do sterownika i kolejny wpis do historii.
+        """
+        o = self.d["obiekty"][self.obiekt]
+        nazwa = o["nazwa"]
+        otwarte = self.scena.postep < 0.5
+        stale = self.scena.faza == "otwarty_staly"
+
         if nr == 0:
+            if self.scena.zablokowana:
+                self.info_okno("Blokada założona",
+                               f"{nazwa} ma założoną blokadę. Zdejmij ją, "
+                               "zanim wpuścisz pojazd.")
+                return
+            if otwarte:
+                self.info_okno("Już otwarte",
+                               f"{nazwa} jest w tej chwili otwarta. "
+                               "Pojazd może przejechać.")
+                return
             self.wpusc()
+
         elif nr == 1:
-            self.recznie(True)
+            if self.scena.zablokowana:
+                self.info_okno("Blokada założona",
+                               f"{nazwa} ma założoną blokadę.")
+                return
+            if stale:
+                self.info_okno("Już otwarte na stałe",
+                               f"{nazwa} jest już otwarta na stałe.")
+                return
+            if okno_pytania(self, "Otworzyć na stałe?",
+                            f"{nazwa} zostanie otwarta i pozostanie otwarta, "
+                            "dopóki jej nie zamkniesz.\n\n"
+                            "Przez ten czas każdy pojazd przejedzie bez "
+                            "sprawdzania numeru.",
+                            tak="Otwórz na stałe", nie="Anuluj",
+                            ostrzezenie=True):
+                self.recznie(True)
+
         elif nr == 2:
-            self.recznie(False)
+            if not otwarte and not stale:
+                self.info_okno("Już zamknięte", f"{nazwa} jest zamknięta.")
+                return
+            if okno_pytania(self, "Zamknąć teraz?",
+                            f"{nazwa} zostanie zamknięta natychmiast.\n\n"
+                            "Upewnij się, że pod zaporą nie stoi pojazd."
+                            if o["typ"] == "slupki" else
+                            f"{nazwa} zostanie opuszczony natychmiast.\n\n"
+                            "Upewnij się, że pod belką nie stoi pojazd.",
+                            tak="Zamknij", nie="Anuluj", ostrzezenie=True):
+                self.recznie(False)
+
         else:
-            self.blokada()
+            if self.scena.zablokowana:
+                if okno_pytania(self, "Zdjąć blokadę?",
+                                f"{nazwa} wróci do normalnej pracy i znów "
+                                "będzie przyjmować połączenia od kierowców.",
+                                tak="Zdejmij blokadę", nie="Anuluj"):
+                    self.blokada()
+            elif okno_pytania(self, "Założyć blokadę?",
+                              f"{nazwa} zostanie zamknięta, a wszystkie "
+                              "połączenia od kierowców będą ignorowane.\n\n"
+                              "Nikt nie wjedzie do czasu zdjęcia blokady.",
+                              tak="Załóż blokadę", nie="Anuluj",
+                              ostrzezenie=True):
+                self.blokada()
+
+    def info_okno(self, tytul, tresc):
+        """Komunikat w barwach programu — z jednym przyciskiem."""
+        okno_tresci(self, tytul, [(tresc, "tekst")])
 
     def _ruch(self, cel, potem=None):
         if self.animacja:
@@ -2458,6 +2725,7 @@ class App(tk.Tk):
         try:
             if self.widoki["podglad"].winfo_ismapped():
                 self.scena.rysuj()
+                self.odswiez_kafle()
         except tk.TclError:
             pass
         self.after(1000, self._petla)
@@ -2947,6 +3215,9 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             import aktualizacje                      # noqa: F401
         except ImportError:
             return
+        if not self.d.get("sprawdzaj_aktualizacje", True):
+            self._napis_pin("v" + VER)
+            return
         import queue
         import threading
         self._kolejka_cicha = queue.Queue()
@@ -2967,11 +3238,10 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             return
         self._akt_stan = rodzaj
         if rodzaj == "jest":
-            zgoda = self.d.get("auto_aktualizacja", False)
-            if zgoda:
-                self._wgraj_po_cichu(dane)          # zgoda juz byla
-            else:
-                self._zapytaj_o_aktualizacje(dane)  # pytamy za kazdym razem
+            # Zawsze pytamy. Program nigdy nie wgrywa nowej wersji sam z
+            # siebie — decyzje o zamknieciu i podmianie plikow podejmuje
+            # dyzurny, bo to on odpowiada za obiekt w tym momencie.
+            self._zapytaj_o_aktualizacje(dane)
         elif rodzaj == "aktualna":
             self._napis_pin("v" + VER + " — najnowsza")
         else:
@@ -3090,12 +3360,12 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
     def _pytaj_o_restart(self, wersja):
         """Nowa wersja jest pobrana, ale program dziala. Pytamy, czy
         przelaczyc teraz — sam z siebie nie zamknie sie w czasie sluzby."""
-        if messagebox.askyesno(
-                "Aktualizacja gotowa",
+        if okno_pytania(
+                self, "Aktualizacja gotowa",
                 f"Wersja {wersja} została pobrana.\n\n"
-                "Uruchomić program ponownie teraz, żeby ją włączyć?\n"
+                "Uruchomić program ponownie teraz, żeby ją włączyć? "
                 "Potrwa to kilka sekund.",
-                parent=self):
+                tak="Uruchom ponownie", nie="Później"):
             import aktualizacje
             aktualizacje.uruchom_pomocnika(self._czeka_pomocnik)
             self._zamykam_sam = True

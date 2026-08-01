@@ -2,7 +2,7 @@
 ; Numer wersji wpisuje budowanie na GitHubie, nie trzeba go zmieniac recznie.
 
 #define NazwaApp    "AWF KIEROWCY"
-#define WersjaApp   "6.7.0"
+#define WersjaApp   "6.9.0"
 #define WydawcaApp  "Straz Akademicka AWF"
 #define StronaApp   "https://github.com/superdarco78/AWF-Kierowcy"
 #define PlikExe     "AWF-Kierowcy.exe"
@@ -37,6 +37,8 @@ Name: "polski"; MessagesFile: "compiler:Languages\Polish.isl"
 [Tasks]
 Name: "pulpit"; Description: "Utworz skrot na pulpicie"; \
   GroupDescription: "Skroty:"; Flags: checkedonce
+Name: "obiekty"; Description: "Osobne skroty do zapory i szlabanow"; \
+  GroupDescription: "Skroty:"; Flags: checkedonce
 Name: "autostart"; Description: "Uruchamiaj przy starcie systemu"; \
   GroupDescription: "Dyzurka:"; Flags: unchecked
 
@@ -53,6 +55,12 @@ Name: "{autodesktop}\{#NazwaApp}"; Filename: "{app}\{#PlikExe}"; Tasks: pulpit
 ; Mozna je przypiac do paska zadan prawym klawiszem.
 Name: "{group}\{#NazwaApp} — Zapora"; Filename: "{app}\{#PlikExe}"; \
   Parameters: "--obiekt 1"
+Name: "{autodesktop}\Zapora"; Filename: "{app}\{#PlikExe}"; \
+  Parameters: "--obiekt 1"; Tasks: obiekty
+Name: "{autodesktop}\Szlaban 1"; Filename: "{app}\{#PlikExe}"; \
+  Parameters: "--obiekt 2"; Tasks: obiekty
+Name: "{autodesktop}\Szlaban 2"; Filename: "{app}\{#PlikExe}"; \
+  Parameters: "--obiekt 3"; Tasks: obiekty
 Name: "{group}\{#NazwaApp} — Szlaban 1"; Filename: "{app}\{#PlikExe}"; \
   Parameters: "--obiekt 2"
 Name: "{group}\{#NazwaApp} — Szlaban 2"; Filename: "{app}\{#PlikExe}"; \
