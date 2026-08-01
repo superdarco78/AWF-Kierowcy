@@ -752,6 +752,27 @@ class EkranPin(tk.Frame):
     """
 
     KLAWISZE = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"]
+
+    # Barwy karty osobno dla obu motywow. W ciemnym karta jest zielenia
+    # uczelni z bialym napisem, w jasnym — biala z zielonym, bo bialy napis
+    # na bieli nie istnieje. Zloto w jasnym motywie jest przyciemnione:
+    # #b9975b na bieli ma kontrast 2,8, czyli za malo do czytania.
+    MOTYW = {
+        "ciemny": dict(
+            karta=((6, 120, 80, 246), (2, 72, 48, 250)),
+            klaw=((5, 110, 74, 250), (2, 66, 44, 252)),
+            ok=((226, 204, 154, 250), (184, 150, 90, 252)),
+            napis=(255, 255, 255), napisOk=(16, 44, 31), pod=(198, 222, 210),
+            zloto=(232, 214, 176), kropka=(232, 214, 176),
+            pusta=(150, 190, 170), c=(255, 150, 150), przyciemnij=84),
+        "jasny": dict(
+            karta=((255, 255, 255, 242), (236, 244, 240, 246)),
+            klaw=((255, 255, 255, 250), (226, 236, 231, 252)),
+            ok=((6, 140, 92, 252), (2, 88, 58, 254)),
+            napis=(2, 72, 48), napisOk=(255, 255, 255), pod=(74, 110, 92),
+            zloto=(138, 110, 52), kropka=(3, 103, 68),
+            pusta=(150, 178, 164), c=(179, 38, 38), przyciemnij=52),
+    }
     KW, KH, PROM = 440, 700, 22
     KLW, KLH, ODST, KPROM = 118, 68, 13, 16
     SY = 276
@@ -761,12 +782,27 @@ class EkranPin(tk.Frame):
         super().__init__(rodzic, bg=B["tlo"])
         self.sprawdz = sprawdz
         self.po_zalogowaniu = po_zalogowaniu
+        # Dwa uklady: karta albo same klawisze na zdjeciu. Bez karty
+        # klawisze musza byc wieksze, bo nie maja tla, ktore je zbiera.
+        dane = getattr(rodzic, "d", {}) or {}
+        self.z_karta = bool(dane.get("karta_logowania", False))
+        if self.z_karta:
+            self.KW, self.KH = 440, 700
+            self.KLW, self.KLH, self.ODST = 118, 68, 13
+            self.SY = 276
+        else:
+            self.KW, self.KH = 470, 790
+            self.KLW, self.KLH, self.ODST = 132, 76, 16
+            self.SY = 300
+
         self.wpisany = ""
         self.proby = 0
         self.info = ""
         self.zablokowany = False
         self.blokada_aktualizacji = False
         self.postep_stan = None          # (ulamek, tekst) albo None
+        self.pytanie = None              # {"wersja":.., "tak":fn, "nie":fn}
+        self._guziki = []
         self.wersja_napis = "v" + VER
         self._wcisniety = None
         self._tlo_tk = None
@@ -904,14 +940,15 @@ class EkranPin(tk.Frame):
             lewy = max(0, (nowy.width - W) // 2)
             gorny = max(0, int((nowy.height - H) * 0.45))
             kadr = nowy.crop((lewy, gorny, lewy + W, gorny + H)).convert("RGBA")
+            M0 = self.MOTYW["jasny" if B["welon"] else "ciemny"]
             kadr = Image.alpha_composite(
-                kadr, Image.new("RGBA", (W, H), (4, 14, 9, 104)))
+                kadr, Image.new("RGBA", (W, H), (4, 14, 9, M0["przyciemnij"])))
             # winieta — narozniki ciemniejsze, oko idzie do srodka
             win = Image.new("L", (W, H), 0)
             ImageDraw.Draw(win).ellipse(
                 [-W * 0.28, -H * 0.38, W * 1.28, H * 1.38], fill=255)
             win = win.filter(ImageFilter.GaussianBlur(
-                max(40, min(W, H) // 6))).point(lambda v: int((255 - v) * 0.5))
+                max(40, min(W, H) // 6))).point(lambda v: int((255 - v) * 0.34))
             kadr.paste(Image.new("RGBA", (W, H), (0, 0, 0, 255)), (0, 0), win)
             self._tlo_pil = kadr
             self._tlo_tk = ImageTk.PhotoImage(kadr.convert("RGB"))
@@ -941,28 +978,37 @@ class EkranPin(tk.Frame):
                 return
         except tk.TclError:
             return
+        M0 = self.MOTYW["jasny" if B["welon"] else "ciemny"]
+        if not self.z_karta:
+            # Klawisze leza na zdjeciu, a nie na bialej karcie — napisy
+            # musza byc jasne takze w motywie jasnym.
+            M0 = dict(self.MOTYW["ciemny"], przyciemnij=M0["przyciemnij"])
         KW, KH, R = self.KW, self.KH, self.PROM
         # Cien musi wyjsc POZA karte, wiec rysujemy na wiekszym plotnie
         # z marginesem. Wczesniej lezal w srodku karty i byl niewidoczny.
         M = self.MARG
         plotno = Image.new("RGBA", (KW + 2 * M, KH + 2 * M), (0, 0, 0, 0))
-        plotno.alpha_composite(self._cien((KW, KH), R, 30, 100, 20),
-                               (M - 60, M - 60))
-        plotno.alpha_composite(self._cien((KW, KH), R, 10, 130, 6),
-                               (M - 20, M - 20))
         karta = Image.new("RGBA", (KW, KH), (0, 0, 0, 0))
-        karta.alpha_composite(
-            self._przejscie((KW, KH), (6, 120, 80, 246), (2, 72, 48, 250), R))
+        if self.z_karta:
+            plotno.alpha_composite(self._cien((KW, KH), R, 30, 100, 20),
+                                   (M - 60, M - 60))
+            plotno.alpha_composite(self._cien((KW, KH), R, 10, 130, 6),
+                                   (M - 20, M - 20))
+            karta.alpha_composite(self._przejscie((KW, KH), *M0["karta"], R))
         d = ImageDraw.Draw(karta)
-        d.rounded_rectangle([0, 0, KW - 1, KH - 1], radius=R,
-                            outline=(201, 168, 110, 190), width=1)
-        d.line([R + 8, 1, KW - R - 8, 1], fill=(255, 255, 255, 60), width=1)
+        if self.z_karta:
+            d.rounded_rectangle([0, 0, KW - 1, KH - 1], radius=R,
+                                outline=M0["zloto"] + (190,), width=1)
+            d.line([R + 8, 1, KW - R - 8, 1], fill=(255, 255, 255, 60),
+                   width=1)
 
         # godlo z poswiata i zlotym pierscieniem
         pos = Image.new("RGBA", (168, 168), (0, 0, 0, 0))
-        ImageDraw.Draw(pos).ellipse([26, 26, 142, 142], fill=(255, 255, 255, 40))
+        ImageDraw.Draw(pos).ellipse([26, 26, 142, 142],
+                                    fill=(255, 255, 255, 40) if not B["welon"]
+                                    else (3, 103, 68, 34))
         karta.alpha_composite(pos.filter(ImageFilter.GaussianBlur(17)),
-                              ((KW - 168) // 2, 14))
+                              ((KW - 168) // 2, 14 if self.z_karta else 22))
         godlo = None
         try:
             from tlo_wbudowane import godlo as godlo_z_kodu
@@ -977,44 +1023,50 @@ class EkranPin(tk.Frame):
                 except (OSError, ValueError):
                     godlo = None
         if godlo is not None:
-            karta.alpha_composite(godlo.resize((100, 100), Image.LANCZOS),
-                                  ((KW - 100) // 2, 40))
-        d.ellipse([(KW - 108) // 2, 36, (KW + 108) // 2, 144],
-                  outline=(232, 214, 176, 150), width=1)
+            gr = 100 if self.z_karta else 116
+            karta.alpha_composite(godlo.resize((gr, gr), Image.LANCZOS),
+                                  ((KW - gr) // 2, 40))
+        pier = 108 if self.z_karta else 126
+        d.ellipse([(KW - pier) // 2, 35, (KW + pier) // 2, 35 + pier],
+                  outline=M0["zloto"] + (150,), width=1)
 
-        d.text((KW / 2, 182), NAZWA, font=self._czcionka(27, True),
-               fill=(255, 255, 255), anchor="mm")
-        d.line([KW / 2 - 46, 202, KW / 2 + 46, 202],
-               fill=(232, 214, 176, 190), width=1)
-        d.text((KW / 2, 220), PODTYTUL, font=self._czcionka(13),
-               fill=(198, 222, 210), anchor="mm")
+        ty = 182 if self.z_karta else 204
+        d.text((KW / 2, ty), NAZWA,
+               font=self._czcionka(27 if self.z_karta else 31, True),
+               fill=M0["napis"], anchor="mm")
+        d.line([KW / 2 - 50, ty + 22, KW / 2 + 50, ty + 22],
+               fill=M0["zloto"] + (190,), width=1)
+        d.text((KW / 2, ty + 40), PODTYTUL, font=self._czcionka(14),
+               fill=M0["pod"], anchor="mm")
 
         # kropki PIN-u — wypelnione tyle, ile cyfr wpisano
+        ky = 236 if self.z_karta else 262
         for i in range(max(4, len(self.wpisany))):
             x = KW / 2 - 36 + i * 24
             if i < len(self.wpisany):
-                d.ellipse([x - 7, 236, x + 7, 250], fill=(232, 214, 176))
+                d.ellipse([x - 7, ky, x + 7, ky + 14], fill=M0["kropka"])
             else:
-                d.ellipse([x - 7, 236, x + 7, 250],
-                          outline=(150, 190, 170), width=2)
+                d.ellipse([x - 7, ky, x + 7, ky + 14],
+                          outline=M0["pusta"], width=2)
 
         if self.info:
-            d.text((KW / 2, 262), self.info, font=self._czcionka(11, True),
+            d.text((KW / 2, ky + 26), self.info, font=self._czcionka(11, True),
                    fill=(255, 150, 150), anchor="mm")
 
-        blok = self.zablokowany or self.blokada_aktualizacji
+        blok = (self.zablokowany or self.blokada_aktualizacji
+                or self.pytanie is not None)
         for x, y, kw, kh, znak in self._prostokaty():
             wcisniety = self._wcisniety == znak
             karta.alpha_composite(self._cien((kw, kh), self.KPROM, 6,
                                              60 if wcisniety else 120, 3),
                                   (x - 12, y - 12))
             if znak == "OK":
-                gora, dol = (226, 204, 154, 250), (184, 150, 90, 252)
-                barwa, fnt = (16, 44, 31), self._czcionka(21, True)
+                gora, dol = M0["ok"]
+                barwa, fnt = M0["napisOk"], self._czcionka(21, True)
             else:
-                gora, dol = (5, 110, 74, 250), (2, 66, 44, 252)
-                fnt = self._czcionka(25, True)
-                barwa = (255, 150, 150) if znak == "C" else (255, 255, 255)
+                gora, dol = M0["klaw"]
+                fnt = self._czcionka(25 if self.z_karta else 27, True)
+                barwa = M0["c"] if znak == "C" else M0["napis"]
             if wcisniety:                      # wcisniety = odwrocone swiatlo
                 gora, dol = dol, gora
             kl = self._przejscie((kw, kh), gora, dol, self.KPROM)
@@ -1024,7 +1076,7 @@ class EkranPin(tk.Frame):
                 barwa = tuple(int(c * 0.55) + 40 for c in barwa)
             dl = ImageDraw.Draw(kl)
             dl.rounded_rectangle([0, 0, kw - 1, kh - 1], radius=self.KPROM,
-                                 outline=(232, 214, 176, 90), width=1)
+                                 outline=M0["zloto"] + (90,), width=1)
             if not wcisniety:
                 dl.line([self.KPROM, 1, kw - self.KPROM, 1],
                         fill=(255, 255, 255, 70), width=1)
@@ -1039,28 +1091,67 @@ class EkranPin(tk.Frame):
 
         szer = 3 * self.KLW + 2 * self.ODST
         sx = (KW - szer) // 2
+
+        # Pytanie o aktualizacje zaslania klawiature — dyzurny ma odpowiedziec
+        # zanim zacznie wpisywac PIN, a nie w trakcie.
+        self._guziki = []
+        if self.pytanie is not None:
+            gy = self.SY + 30
+            zaslona = Image.new("RGBA", (szer + 24, 4 * (self.KLH + self.ODST)),
+                                (0, 0, 0, 150))
+            karta.alpha_composite(
+                Image.alpha_composite(
+                    Image.new("RGBA", zaslona.size, (0, 0, 0, 0)),
+                    self._przejscie(zaslona.size, (0, 0, 0, 170),
+                                    (0, 0, 0, 200), 16)),
+                (sx - 12, self.SY - 6))
+            d.text((KW / 2, gy + 6), "Dostępna nowa wersja",
+                   font=self._czcionka(15, True), fill=M0["zloto"], anchor="mm")
+            d.text((KW / 2, gy + 34), self.pytanie["wersja"],
+                   font=self._czcionka(26, True), fill=(255, 255, 255),
+                   anchor="mm")
+            d.text((KW / 2, gy + 66), "Wgrać teraz? Potrwa chwilę,",
+                   font=self._czcionka(12), fill=(210, 228, 218), anchor="mm")
+            d.text((KW / 2, gy + 84), "program zamknie się i wróci sam.",
+                   font=self._czcionka(12), fill=(210, 228, 218), anchor="mm")
+            for i, (napis, klucz) in enumerate((("Wgraj teraz", "tak"),
+                                                ("Nie teraz", "nie"))):
+                gw, gh = szer - 40, 52
+                gx = sx + 20
+                gyy = gy + 112 + i * (gh + 12)
+                glowny = klucz == "tak"
+                gr = self._przejscie(
+                    (gw, gh), *(M0["ok"] if glowny else M0["klaw"]), 14)
+                dg = ImageDraw.Draw(gr)
+                dg.rounded_rectangle([0, 0, gw - 1, gh - 1], radius=14,
+                                     outline=M0["zloto"] + (110,), width=1)
+                dg.text((gw / 2, gh / 2), napis, font=self._czcionka(15, True),
+                        fill=M0["napisOk"] if glowny else M0["napis"],
+                        anchor="mm")
+                karta.alpha_composite(gr, (gx, gyy))
+                self._guziki.append((gx, gyy, gw, gh, klucz))
+
         py = self.SY + 4 * (self.KLH + self.ODST) + 8
         if self.postep_stan is not None:
             ulamek, opis = self.postep_stan
             d.text((sx, py), opis, font=self._czcionka(12, True),
-                   fill=(232, 214, 176))
+                   fill=M0["zloto"])
             d.text((sx + szer, py), f"{round(ulamek * 100)}%",
-                   font=self._czcionka(12, True), fill=(198, 222, 210),
-                   anchor="ra")
+                   font=self._czcionka(12, True), fill=M0["pod"], anchor="ra")
             d.rounded_rectangle([sx, py + 22, sx + szer, py + 29], radius=4,
                                 fill=(0, 0, 0, 120))
             if ulamek > 0:
                 d.rounded_rectangle(
                     [sx, py + 22, sx + max(8, int(szer * ulamek)), py + 29],
-                    radius=4, fill=(232, 214, 176))
+                    radius=4, fill=M0["zloto"])
         else:
             d.text((KW / 2, py + 4), "PIN fabryczny 1234 — zmień po pierwszym "
                    "logowaniu", font=self._czcionka(11),
-                   fill=(170, 200, 186), anchor="mm")
+                   fill=M0["pod"], anchor="mm")
         d.text((KW / 2, py + 58), "Nie pamiętam PIN-u",
-               font=self._czcionka(12), fill=(232, 214, 176), anchor="mm")
+               font=self._czcionka(12), fill=M0["zloto"], anchor="mm")
         d.line([KW / 2 - 63, py + 69, KW / 2 + 63, py + 69],
-               fill=(232, 214, 176, 160), width=1)
+               fill=M0["zloto"] + (160,), width=1)
         self._odnosnik = (KW / 2 - 70, py + 46, 140, 30)
 
         plotno.alpha_composite(karta, (M, M))
@@ -1100,6 +1191,8 @@ class EkranPin(tk.Frame):
                 e.y / max(0.01, self._skala) - self.MARG)
 
     def _wcisnij(self, e):
+        if self.pytanie is not None:
+            return
         if self.zablokowany or self.blokada_aktualizacji:
             return
         x, y = self._z_ekranu(e)
@@ -1113,6 +1206,16 @@ class EkranPin(tk.Frame):
         znak = self._wcisniety
         self._wcisniety = None
         x, y = self._z_ekranu(e)
+        if self.pytanie is not None:
+            for gx, gy, gw, gh, klucz in self._guziki:
+                if gx <= x <= gx + gw and gy <= y <= gy + gh:
+                    odpowiedz = self.pytanie.get(klucz)
+                    self.pytanie = None
+                    self.rysuj()
+                    if callable(odpowiedz):
+                        odpowiedz()
+                    return
+            return
         ox, oy, ow, oh = getattr(self, "_odnosnik", (0, 0, 0, 0))
         if ox <= x <= ox + ow and oy <= y <= oy + oh:
             self.rysuj()
@@ -1127,7 +1230,10 @@ class EkranPin(tk.Frame):
         self.rysuj()
 
     def klik(self, znak):
-        if self.zablokowany or self.blokada_aktualizacji:
+        # Pytanie o aktualizacje zaslania klawiature — takze ta fizyczna,
+        # inaczej dalo by sie wpisac PIN "na slepo" pod zaslona.
+        if (self.zablokowany or self.blokada_aktualizacji
+                or self.pytanie is not None):
             return
         if znak == "C":
             self.wpisany = ""
@@ -1166,6 +1272,12 @@ class EkranPin(tk.Frame):
     # ------------------------------------------------------------------
     # aktualizacja
     # ------------------------------------------------------------------
+
+    def zapytaj_o_aktualizacje(self, wersja, tak, nie):
+        """Pyta raz. Odpowiedz zapamietuje program, nie ten ekran."""
+        self.pytanie = {"wersja": wersja, "tak": tak, "nie": nie}
+        self.info = ""
+        self.rysuj()
 
     def komunikat(self, tekst, kolor=None):
         """Napis w rogu ekranu — wersja albo stan sprawdzania."""
@@ -1964,8 +2076,68 @@ class App(tk.Tk):
             w, text=f"Wersja programu: {VER}  ·  jeszcze nie sprawdzano",
             bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 10))
         self.lbl_akt.pack(anchor="w", padx=24)
-        tk.Label(w, text="Program sprawdza aktualizacje sam, przy każdym "
-                         "uruchomieniu, zaraz po zalogowaniu.",
+        tk.Label(w, text="Program sprawdza aktualizacje sam, na ekranie "
+                         "logowania — zanim ktokolwiek wpisze PIN.",
+                 bg=B["tlo"], fg=B["przygasz"],
+                 font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(4, 0))
+
+        r_auto = tk.Frame(w, bg=B["tlo"])
+        r_auto.pack(anchor="w", padx=24, pady=(10, 0))
+        self.lbl_auto = tk.Label(r_auto, bg=B["tlo"], fg=B["przygasz"],
+                                 font=("Segoe UI", 10))
+        self.lbl_auto.pack(side="left", padx=(0, 12))
+
+        def przelacz_auto():
+            self.d["auto_aktualizacja"] = not self.d.get("auto_aktualizacja")
+            zapisz(self.d)
+            odswiez_auto()
+
+            self.log("wgrywanie bez pytania: "
+                     + ("włączone" if self.d["auto_aktualizacja"] else "wyłączone"))
+
+        b_auto = tk.Button(r_auto, command=przelacz_auto, relief="flat", bd=0,
+                           cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                           font=("Segoe UI", 10), padx=16, pady=6)
+        b_auto.pack(side="left")
+
+        def odswiez_auto():
+            wlaczone = bool(self.d.get("auto_aktualizacja"))
+            self.lbl_auto.configure(
+                text=("Nowe wersje wgrywają się bez pytania"
+                      if wlaczone else "Program pyta przed wgraniem"),
+                fg=B["ok"] if wlaczone else B["przygasz"])
+            b_auto.configure(text="Wyłącz" if wlaczone else "Włącz")
+
+        odswiez_auto()
+
+        r_styl = tk.Frame(w, bg=B["tlo"])
+        r_styl.pack(anchor="w", padx=24, pady=(8, 0))
+        lbl_styl = tk.Label(r_styl, bg=B["tlo"], fg=B["przygasz"],
+                            font=("Segoe UI", 10))
+        lbl_styl.pack(side="left", padx=(0, 12))
+
+        def przelacz_styl():
+            self.d["karta_logowania"] = not self.d.get("karta_logowania", False)
+            zapisz(self.d)
+            odswiez_styl()
+            self.log("układ logowania: "
+                     + ("karta" if self.d["karta_logowania"] else "bez karty"))
+
+        b_styl = tk.Button(r_styl, command=przelacz_styl, relief="flat", bd=0,
+                           cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                           font=("Segoe UI", 10), padx=16, pady=6)
+        b_styl.pack(side="left")
+
+        def odswiez_styl():
+            karta = bool(self.d.get("karta_logowania", False))
+            lbl_styl.configure(
+                text=("Logowanie: klawiatura na karcie" if karta
+                      else "Logowanie: klawiatura wprost na zdjęciu"))
+            b_styl.configure(text="Pokaż kartę" if not karta else "Bez karty")
+
+        odswiez_styl()
+        tk.Label(w, text="Zmiana układu logowania działa od następnego "
+                         "uruchomienia programu.",
                  bg=B["tlo"], fg=B["przygasz"],
                  font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(4, 0))
 
@@ -2653,11 +2825,35 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             return
         self._akt_stan = rodzaj
         if rodzaj == "jest":
-            self._wgraj_po_cichu(dane)
+            zgoda = self.d.get("auto_aktualizacja")
+            if zgoda:
+                self._wgraj_po_cichu(dane)          # zgoda juz byla
+            elif zgoda is None:
+                self._zapytaj_o_aktualizacje(dane)  # pytamy pierwszy raz
+            else:
+                self._napis_pin(f"dostępna {dane['wersja']}", B["zloto"])
         elif rodzaj == "aktualna":
             self._napis_pin("v" + VER + " — najnowsza")
         else:
             self._napis_pin("v" + VER)
+
+    def _zapytaj_o_aktualizacje(self, info):
+        """Pyta raz, przed wpisaniem PIN-u. Zgoda zostaje zapamietana
+        i od nastepnego razu program wgrywa aktualizacje bez pytania."""
+        ekran = getattr(self, "ekran_pin", None)
+        if ekran is None or not ekran.winfo_exists():
+            return
+
+        def tak():
+            self.d["auto_aktualizacja"] = True
+            zapisz(self.d)
+            self._wgraj_po_cichu(info)
+
+        def nie():
+            # nic nie zapisujemy — przy nastepnym uruchomieniu spytamy znowu
+            self._napis_pin(f"dostępna {info['wersja']}", B["zloto"])
+
+        ekran.zapytaj_o_aktualizacje(info["wersja"], tak, nie)
 
     def _napis_pin(self, tekst, kolor=None):
         ekran = getattr(self, "ekran_pin", None)
@@ -2735,11 +2931,37 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             self.log("cicha aktualizacja nieudana: " + str(tresc))
             return
 
+        if self._zalogowany:
+            # Ktos wpisal PIN w trakcie pobierania. Nie zamykamy programu
+            # w czasie sluzby — pytamy, kiedy ma sie przelaczyc.
+            self._czeka_pomocnik = tresc
+            self.log(f'wersja {info["wersja"]} pobrana — czeka na ponowne '
+                     'uruchomienie')
+            self.after(800, lambda: self._pytaj_o_restart(info["wersja"]))
+            return
+
         self._pasek_pin(1.0, "Zamykam się — zaraz wrócę")
         self.update_idletasks()
         import aktualizacje
         aktualizacje.uruchom_pomocnika(tresc)
         self.after(400, self.destroy)
+
+    def _pytaj_o_restart(self, wersja):
+        """Nowa wersja jest pobrana, ale program dziala. Pytamy, czy
+        przelaczyc teraz — sam z siebie nie zamknie sie w czasie sluzby."""
+        if messagebox.askyesno(
+                "Aktualizacja gotowa",
+                f"Wersja {wersja} została pobrana.\n\n"
+                "Uruchomić program ponownie teraz, żeby ją włączyć?\n"
+                "Potrwa to kilka sekund.",
+                parent=self):
+            import aktualizacje
+            aktualizacje.uruchom_pomocnika(self._czeka_pomocnik)
+            self.after(400, self.destroy)
+        else:
+            self._pasek_informacyjny(
+                f"Wersja {wersja} czeka — włączy się przy następnym "
+                "uruchomieniu", B["akcent"])
 
     def _pokaz_wynik_aktualizacji(self):
         """Po aktualizacji program wraca sam. Tu melduje, jak poszlo —

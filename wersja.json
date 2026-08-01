@@ -1,7 +1,7 @@
 {
-  "wersja": "6.3.1",
-  "opis": "Co nowego w 6.3.1:\n\n• Poprawka: cien karty logowania [wersja 6.4.0]",
+  "wersja": "6.1",
+  "opis": "Co nowego w 6.1:\n\n• kolejka pojazdów — trzy auta pod bramą obsłużone po kolei\n• kody jednorazowe dla gości\n• harmonogram ogólny zapory jako siatka tygodniowa\n• obsługa wielu obiektów: zapora i dwa szlabany\n• poprawka: panele zasłaniały słupki na wąskim ekranie",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "c64ffb19b6d222d2fbc45126f594238d714a47e807b7910e86160fd0642bb89d",
+  "suma": "",
   "wymagana": false
 }
