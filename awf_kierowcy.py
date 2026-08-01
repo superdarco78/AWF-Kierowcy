@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "6.1"
+VER = "6.5.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -85,6 +85,64 @@ def zasob(nazwa):
             return p
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), nazwa)
     return p if os.path.exists(p) else None
+
+
+def juz_dziala():
+    """Czy program juz jest uruchomiony.
+
+    Na Windows pytamy system o nazwany znacznik — pierwszy program go
+    zaklada, drugi dostaje informacje, ze taki juz jest. Poza Windows
+    pilnujemy tego plikiem z numerem procesu.
+
+    Dwa okna naraz to nie tylko balagan: obie kopie pisza do tego samego
+    pliku bazy i ta, ktora zapisze pozniej, kasuje prace tej pierwszej.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            znacznik = ctypes.windll.kernel32.CreateMutexW(
+                None, False, "AWF-KIEROWCY-jedno-uruchomienie")
+            global _ZNACZNIK
+            _ZNACZNIK = znacznik              # trzymamy, zeby nie zniknal
+            return ctypes.windll.kernel32.GetLastError() == 183   # JUZ_ISTNIEJE
+        except OSError:
+            return False
+    plik = os.path.join(katalog_domyslny(), "dziala.pid")
+    try:
+        if os.path.exists(plik):
+            with open(plik, encoding="utf-8") as f:
+                pid = int(f.read().strip() or 0)
+            if pid and pid != os.getpid():
+                try:
+                    os.kill(pid, 0)
+                    return True
+                except OSError:
+                    pass
+        with open(plik, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def obiekt_z_polecenia():
+    """Numer obiektu podany przy uruchomieniu: --obiekt 2.
+
+    Dzieki temu skrot na pulpicie albo w pasku zadan moze otwierac program
+    od razu na zaporze, szlabanie 1 albo szlabanie 2.
+    """
+    for i, arg in enumerate(sys.argv):
+        if arg in ("--obiekt", "-o") and i + 1 < len(sys.argv):
+            try:
+                return max(0, int(sys.argv[i + 1]) - 1)
+            except ValueError:
+                return 0
+        if arg.startswith("--obiekt="):
+            try:
+                return max(0, int(arg.split("=", 1)[1]) - 1)
+            except ValueError:
+                return 0
+    return 0
 
 
 def katalog_domyslny():
@@ -1031,11 +1089,18 @@ class EkranPin(tk.Frame):
                   outline=M0["zloto"] + (150,), width=1)
 
         ty = 182 if self.z_karta else 204
+        # Nazwa zlotem uczelni — jedyny napis w tej barwie, wiec od razu
+        # wiadomo, gdzie patrzec. Cien pod spodem odkleja ja od zdjecia.
+        d.text((KW / 2 + 1, ty + 1), NAZWA,
+               font=self._czcionka(27 if self.z_karta else 31, True),
+               fill=(0, 0, 0, 130), anchor="mm")
         d.text((KW / 2, ty), NAZWA,
                font=self._czcionka(27 if self.z_karta else 31, True),
-               fill=M0["napis"], anchor="mm")
+               fill=M0["zloto"], anchor="mm")
         d.line([KW / 2 - 50, ty + 22, KW / 2 + 50, ty + 22],
                fill=M0["zloto"] + (190,), width=1)
+        d.text((KW / 2 + 1, ty + 41), PODTYTUL, font=self._czcionka(14),
+               fill=(0, 0, 0, 110), anchor="mm")
         d.text((KW / 2, ty + 40), PODTYTUL, font=self._czcionka(14),
                fill=M0["pod"], anchor="mm")
 
@@ -1145,6 +1210,10 @@ class EkranPin(tk.Frame):
                     [sx, py + 22, sx + max(8, int(szer * ulamek)), py + 29],
                     radius=4, fill=M0["zloto"])
         else:
+            if not self.z_karta:
+                d.text((KW / 2 + 1, py + 5), "PIN fabryczny 1234 — zmień po "
+                       "pierwszym logowaniu", font=self._czcionka(11),
+                       fill=(0, 0, 0, 120), anchor="mm")
             d.text((KW / 2, py + 4), "PIN fabryczny 1234 — zmień po pierwszym "
                    "logowaniu", font=self._czcionka(11),
                    fill=M0["pod"], anchor="mm")
@@ -1481,7 +1550,7 @@ class App(tk.Tk):
         self._nowa_instalacja = pierwsze_uruchomienie()
         self.d = wczytaj()
         zastosuj_motyw(self.d.get("motyw") == "jasny")
-        self.obiekt = 0
+        self.obiekt = min(obiekt_z_polecenia(), len(self.d["obiekty"]) - 1)
         self.wybrany = 0
         self.animacja = None
         self.stany = {o["id"]: {"postep": 1.0, "faza": "spoczynek",
@@ -2825,13 +2894,11 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             return
         self._akt_stan = rodzaj
         if rodzaj == "jest":
-            zgoda = self.d.get("auto_aktualizacja")
+            zgoda = self.d.get("auto_aktualizacja", False)
             if zgoda:
                 self._wgraj_po_cichu(dane)          # zgoda juz byla
-            elif zgoda is None:
-                self._zapytaj_o_aktualizacje(dane)  # pytamy pierwszy raz
             else:
-                self._napis_pin(f"dostępna {dane['wersja']}", B["zloto"])
+                self._zapytaj_o_aktualizacje(dane)  # pytamy za kazdym razem
         elif rodzaj == "aktualna":
             self._napis_pin("v" + VER + " — najnowsza")
         else:
@@ -2845,8 +2912,8 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             return
 
         def tak():
-            self.d["auto_aktualizacja"] = True
-            zapisz(self.d)
+            # Zgody nie zapisujemy. Program ma pytac za kazdym razem —
+            # wgrywanie bez pytania wlacza sie recznie w Ustawieniach.
             self._wgraj_po_cichu(info)
 
         def nie():
@@ -3190,5 +3257,22 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             self.log("sprawdzanie nieudane: " + str(dane))
 
 
+def _sprawdz_jedno_uruchomienie():
+    """Drugie uruchomienie tylko melduje i konczy sie — bez okna programu."""
+    if not juz_dziala():
+        return
+    korzen = tk.Tk()
+    korzen.withdraw()
+    messagebox.showinfo(
+        NAZWA,
+        "Program już działa.\n\n"
+        "Poszukaj go na pasku zadań — okno jest otwarte.\n"
+        "Dwie kopie naraz zapisywałyby tę samą bazę i jedna kasowałaby "
+        "pracę drugiej.")
+    korzen.destroy()
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    _sprawdz_jedno_uruchomienie()
     App().mainloop()

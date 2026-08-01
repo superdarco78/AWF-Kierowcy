@@ -2,7 +2,7 @@
 ; Numer wersji wpisuje budowanie na GitHubie, nie trzeba go zmieniac recznie.
 
 #define NazwaApp    "AWF KIEROWCY"
-#define WersjaApp   "6.0.0"
+#define WersjaApp   "6.5.0"
 #define WydawcaApp  "Straz Akademicka AWF"
 #define StronaApp   "https://github.com/superdarco78/AWF-Kierowcy"
 #define PlikExe     "AWF-Kierowcy.exe"
@@ -48,6 +48,15 @@ Source: "dist\AWF-Kierowcy\*"; DestDir: "{app}"; \
 Name: "{group}\{#NazwaApp}"; Filename: "{app}\{#PlikExe}"
 Name: "{group}\Odinstaluj {#NazwaApp}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#NazwaApp}"; Filename: "{app}\{#PlikExe}"; Tasks: pulpit
+
+; Skroty do poszczegolnych obiektow — kazdy otwiera program od razu na swoim.
+; Mozna je przypiac do paska zadan prawym klawiszem.
+Name: "{group}\{#NazwaApp} — Zapora"; Filename: "{app}\{#PlikExe}"; \
+  Parameters: "--obiekt 1"
+Name: "{group}\{#NazwaApp} — Szlaban 1"; Filename: "{app}\{#PlikExe}"; \
+  Parameters: "--obiekt 2"
+Name: "{group}\{#NazwaApp} — Szlaban 2"; Filename: "{app}\{#PlikExe}"; \
+  Parameters: "--obiekt 3"
 Name: "{userstartup}\{#NazwaApp}"; Filename: "{app}\{#PlikExe}"; Tasks: autostart
 
 [Run]
