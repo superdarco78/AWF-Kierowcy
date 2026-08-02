@@ -1,7 +1,7 @@
 {
-  "wersja": "7.0.5",
-  "opis": "Co nowego w 7.0.5:\n\n• v8",
+  "wersja": "7.0.6",
+  "opis": "Co nowego w 7.0.6:\n\n• 8.1",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "07e817dbf7af8739e5469c09c57f70e0fb35c7550b75519b09431fb7c18c80da",
+  "suma": "4f0c367abe20e5c5269ed2e22b6d6156dcf627bfa1eb5abac51ef9d3809e4be6",
   "wymagana": false
 }
