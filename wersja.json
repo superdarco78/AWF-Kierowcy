@@ -1,7 +1,7 @@
 {
-  "wersja": "7.1.0",
-  "opis": "Co nowego w 7.1.0:\n\n• Paczka 10.1.0 gotowa\n• nowe 8.1\n• 8.1",
+  "wersja": "7.1.1",
+  "opis": "Co nowego w 7.1.1:\n\n• Awf kierowcy v10.2.0",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "34abcaaaa544be638b2fb91d3fc553df0703801bcd4a133f90a6575dc1b810f4",
+  "suma": "1f859a4b7eb6fb3872c8180b2a79ab546c6131b0fa14df33b605ab914c8f37e6",
   "wymagana": false
 }
