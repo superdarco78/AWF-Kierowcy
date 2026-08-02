@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "7.5.1"
+VER = "8.1.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -64,11 +64,94 @@ JASNY = {
     "scenaTlo": "#e1ede9", "welon": 56,
 }
 
+# ==========================================================================
+# style graficzne — dwanascie palet do wyboru w Ustawieniach
+#
+# Kazdy styl to komplet barw nadpisujacy palete bazowa. Numer 3 to barwy
+# uczelni i on jest domyslny. Style jasne maja "welon" wiekszy od zera —
+# po tym program poznaje, ze rysuje na jasnym tle.
+# ==========================================================================
+
+STYLE = {
+    1: ("Szkło", dict(CIEMNY)),
+    2: ("Grafit", dict(CIEMNY, tlo="#141614", tlo2="#1c1e1d", tlo3="#2a2d2b",
+                       linia="#3c403e", tekst="#f2f2f0", tekst2="#c8ccc9",
+                       przygasz="#9aa09d", zloto="#d6bd8a", zloto2="#a48a5c",
+                       naPanelu="#f2f2f0", scenaTlo="#0d0f0e",
+                       panel=(20, 22, 21, 200), panelRamka=(214, 189, 138, 60))),
+    3: ("Zieleń uczelni", dict(CIEMNY)),
+    4: ("Mleczne szkło", dict(JASNY)),
+    5: ("Papier", dict(JASNY, tlo="#fdfdfc", tlo2="#ffffff", tlo3="#f4f3ef",
+                       linia="#dedcd6", tekst="#1a1a18", tekst2="#3f3f3a",
+                       przygasz="#6b6b64", akcent="#036744", akcent2="#024a31",
+                       zloto="#7a6129", zloto2="#a68a4e", ok="#0d5730",
+                       uwaga="#7a5300", alarm="#8c1d16", naPanelu="#1a1a18",
+                       panel=(255, 255, 255, 235), panelRamka=(26, 26, 24, 60),
+                       scenaTlo="#eceae4", welon=64)),
+    6: ("Kontrast", dict(CIEMNY, tlo="#000000", tlo2="#0c0c0c", tlo3="#1a1a1a",
+                         linia="#3a3a3a", tekst="#ffffff", tekst2="#e0e0e0",
+                         przygasz="#b8b8b8", akcent="#005c3c", akcent2="#00432c",
+                         zloto="#ffd600", zloto2="#c7a800", ok="#00e676",
+                         uwaga="#ffd600", alarm="#ff5252", naPanelu="#ffffff",
+                         panel=(0, 0, 0, 225), panelRamka=(255, 214, 0, 90),
+                         scenaTlo="#000000")),
+    7: ("Pergamin", dict(JASNY, tlo="#f7f2e6", tlo2="#fcf9f0", tlo3="#efe8d6",
+                         linia="#ddd2b8", tekst="#3a3122", tekst2="#5c5240",
+                         przygasz="#7d7059", akcent="#3f6b2e", akcent2="#2e5120",
+                         zloto="#7a6129", zloto2="#a8874a", ok="#3f6b2e",
+                         uwaga="#8a6a12", alarm="#8c3a16", naPanelu="#3a3122",
+                         panel=(252, 249, 240, 235), panelRamka=(122, 97, 41, 70),
+                         scenaTlo="#e9e0cb", welon=52)),
+    8: ("Stal", dict(JASNY, tlo="#eef1f3", tlo2="#ffffff", tlo3="#e0e7ec",
+                     linia="#c6d1d8", tekst="#16232c", tekst2="#37505f",
+                     przygasz="#5b7383", akcent="#26535f", akcent2="#1a3d47",
+                     zloto="#6a7f8c", zloto2="#8aa2b4", ok="#0f6b46",
+                     uwaga="#8a6206", alarm="#a32a20", naPanelu="#16232c",
+                     panel=(255, 255, 255, 232), panelRamka=(38, 83, 95, 70),
+                     scenaTlo="#d7e0e6", welon=58)),
+    9: ("Noc", dict(CIEMNY, tlo="#070a12", tlo2="#0e1420", tlo3="#182034",
+                    linia="#2a3855", tekst="#e8eef8", tekst2="#c0cde0",
+                    przygasz="#93a5c0", akcent="#1e3a68", akcent2="#152a4d",
+                    zloto="#8fb0e8", zloto2="#6b8ec4", ok="#4fd6a8",
+                    uwaga="#f0c669", alarm="#ff8ea0", naPanelu="#e8eef8",
+                    panel=(14, 20, 32, 205), panelRamka=(143, 176, 232, 70),
+                    scenaTlo="#050810")),
+    10: ("Zieleń jasna", dict(JASNY, tlo="#f4f8f7", tlo2="#ffffff",
+                              tlo3="#e4efea", linia="#c3ded2")),
+    11: ("Marmur", dict(JASNY, tlo="#faf9f6", tlo2="#ffffff", tlo3="#f0eee8",
+                        linia="#dcd8cf", tekst="#22201b", tekst2="#464339",
+                        przygasz="#6d6857", akcent="#2f6b41", akcent2="#22502f",
+                        zloto="#8a7340", zloto2="#b09a68", ok="#2f6b41",
+                        uwaga="#8a6a12", alarm="#9c2b20", naPanelu="#22201b",
+                        panel=(255, 255, 255, 235), panelRamka=(138, 115, 64, 70),
+                        scenaTlo="#e8e5dd", welon=54)),
+    12: ("Złoto na czerni", dict(CIEMNY, tlo="#0a0908", tlo2="#151310",
+                                 tlo3="#221e16", linia="#3d3628",
+                                 tekst="#f4efe3", tekst2="#d8cfba",
+                                 przygasz="#a89b82", akcent="#4a3f28",
+                                 akcent2="#332c1c", zloto="#d8b871",
+                                 zloto2="#a88c4e", ok="#7ed6a0",
+                                 uwaga="#e8c46a", alarm="#ff9a8e",
+                                 naPanelu="#f4efe3",
+                                 panel=(21, 19, 16, 215),
+                                 panelRamka=(216, 184, 113, 80),
+                                 scenaTlo="#080706")),
+}
+
 B = dict(CIEMNY)          # biezaca paleta
 
 
-def zastosuj_motyw(jasny):
+def zastosuj_motyw(jasny, styl=None):
+    """Ustawia biezaca palete.
+
+    Gdy podano numer stylu, bierzemy go z tablicy STYLE. Motyw jasny/ciemny
+    zostaje dla zgodnosci ze starszymi ustawieniami — style same okreslaja,
+    czy sa jasne, przez klucz "welon".
+    """
     B.clear()
+    if styl and styl in STYLE:
+        B.update(STYLE[styl][1])
+        return
     B.update(JASNY if jasny else CIEMNY)
 
 
@@ -1683,7 +1766,8 @@ class App(tk.Tk):
         super().__init__()
         self._nowa_instalacja = pierwsze_uruchomienie()
         self.d = wczytaj()
-        zastosuj_motyw(self.d.get("motyw") == "jasny")
+        zastosuj_motyw(self.d.get("motyw") == "jasny",
+                       self.d.get("styl"))
         self.obiekt = min(obiekt_z_polecenia(), len(self.d["obiekty"]) - 1)
         self.wybrany = 0
         self.animacja = None
@@ -1713,16 +1797,18 @@ class App(tk.Tk):
         self.ekran_pin = EkranPin(self, self._pin_ok, self._zalogowano)
         self.ekran_pin.pack(fill="both", expand=True)
 
-        # Aktualizacja wgrywa sie sama, zanim ktokolwiek wpisze PIN.
+        # Aktualizacji nie sprawdzamy przed PIN-em — ekran logowania ma byc
+        # ekranem logowania. Pytanie wyskakuje po zalogowaniu, gdy dyzurny
+        # widzi juz panel i moze swiadomie zdecydowac.
         self._zalogowany = False
         self._akt_stan = None
-        self.after(1200, self._cicha_aktualizacja)
 
         # Program w dyzurce nie moze zniknac przez przypadkowe klikniecie
         # krzyzyka albo Alt+F4 — pytamy o potwierdzenie.
         self._zamykam_sam = False
         self.protocol("WM_DELETE_WINDOW", self.zamknij_program)
 
+        self.bind("<Escape>", self._escape_obiekt, add="+")
         self.bind("<F11>", lambda _e: self.pelny_ekran())
         self.bind("<Escape>", self._escape)
 
@@ -1740,6 +1826,12 @@ class App(tk.Tk):
                 ostrzezenie=True):
             self._zamykam_sam = True
             self.destroy()
+
+    def _escape_obiekt(self, _e=None):
+        if getattr(self, "obiekt_otwarty", False):
+            self.zamknij_obiekt()
+            return "break"
+        return None
 
     def _escape(self, _e=None):
         """Escape wychodzi z pelnego ekranu, ale nie zamyka programu."""
@@ -1940,7 +2032,9 @@ class App(tk.Tk):
         self._petla()
         if self._nowa_instalacja:
             self.after(400, self._pierwsze_uruchomienie)
-        self._sprawdz_aktualizacje()
+        # Sprawdzamy sekunde po zalogowaniu — dyzurny zdazy zobaczyc panel,
+        # zanim pojawi sie pytanie o nowa wersje.
+        self.after(1400, self._cicha_aktualizacja)
 
     def zablokuj(self):
         if self.animacja:
@@ -2158,9 +2252,13 @@ class App(tk.Tk):
                 barwa_win = (255, 255, 255) if B["welon"] else (0, 0, 0)
                 kadr.paste(Image.new("RGBA", (W, H), barwa_win + (255,)),
                            (0, 0), win)
+                if not etykieta.winfo_exists():
+                    return
                 etykieta._tk = ImageTk.PhotoImage(kadr.convert("RGB"))
                 etykieta.configure(image=etykieta._tk)
-            except (OSError, ValueError, MemoryError):
+            except (OSError, ValueError, MemoryError, tk.TclError):
+                # Okno moglo zniknac w trakcie przeliczania tla —
+                # nie jest to blad, po prostu nie ma juz czego malowac.
                 pass
 
         etykieta._przelicz = przelicz
@@ -2194,11 +2292,12 @@ class App(tk.Tk):
             k.pack(fill="x", pady=(0, 10))
             wn = tk.Frame(k, bg=B["tlo2"], padx=16, pady=14)
             wn.pack(fill="x")
-            # Znaczek obiektu: slupki albo szlaban — od razu widac, co to jest.
-            lam = tk.Canvas(wn, width=44, height=40, bg=B["tlo2"],
+            # Sama lampka stanu — rysunki slupkow i belki byly za male,
+            # zeby cokolwiek z nich wyczytac, a zasmiecaly kafel.
+            lam = tk.Canvas(wn, width=16, height=16, bg=B["tlo2"],
                             highlightthickness=0)
             lam.pack(side="left", padx=(0, 14))
-            kropka = self._znaczek(lam, o["typ"])
+            kropka = lam.create_oval(2, 2, 14, 14, fill=B["ok"], outline="")
             opis = tk.Frame(wn, bg=B["tlo2"])
             opis.pack(side="left", fill="x", expand=True)
             nazwa = tk.Label(opis, text=o["nazwa"], bg=B["tlo2"], fg=B["tekst"],
@@ -2208,7 +2307,7 @@ class App(tk.Tk):
                             font=("Segoe UI", 10), anchor="w")
             stan.pack(anchor="w")
             for widget in (k, wn, lam, opis, nazwa, stan):
-                widget.bind("<Button-1>", lambda _e, n=nr: self.wybierz_obiekt(n))
+                widget.bind("<Button-1>", lambda _e, n=nr: self.otworz_obiekt(n))
                 widget.bind("<Double-Button-1>",
                             lambda _e, n=nr: (self.wybierz_obiekt(n),
                                               self.pokaz_scene(True)))
@@ -2220,12 +2319,27 @@ class App(tk.Tk):
                                "nazwa": nazwa, "stan": stan,
                                "tlo": (k, wn, lam, opis, nazwa, stan)})
 
-        # --- prawa strona: karta z nazwa, scena i poleceniami ---
-        prawa = tk.Frame(ram, bg=B["tlo2"], highlightthickness=1,
+        # --- prawa strona: ekran glowny albo karta wybranego obiektu ---
+        # Domyslnie widac sam kampus i przeglad wszystkich obiektow. Karta
+        # konkretnego szlabanu wchodzi dopiero po kliknieciu kafla i zamyka
+        # sie krzyzykiem — jak okno, a nie jak stan, w ktorym sie utknie.
+        self.prawa_ramka = tk.Frame(ram, bg=B["tlo"])
+        self.prawa_ramka.grid(row=0, column=1, sticky="nsew",
+                              padx=(0, 14), pady=14)
+        self.prawa_ramka.rowconfigure(0, weight=1)
+        self.prawa_ramka.columnconfigure(0, weight=1)
+
+        self.ekran_ogolny = tk.Frame(self.prawa_ramka, bg=B["tlo"])
+        self.ekran_ogolny.grid(row=0, column=0, sticky="nsew")
+        self.tlo_kampusu(self.ekran_ogolny)
+        self._buduj_ekran_ogolny(self.ekran_ogolny)
+
+        prawa = tk.Frame(self.prawa_ramka, bg=B["tlo2"], highlightthickness=1,
                          highlightbackground=B["zloto2"])
-        prawa.grid(row=0, column=1, sticky="nsew", padx=(0, 14), pady=14)
+        self.karta_obiektu = prawa
         prawa.rowconfigure(1, weight=1)
         prawa.columnconfigure(0, weight=1)
+        self.obiekt_otwarty = False
 
         gora = tk.Frame(prawa, bg=B["tlo2"], padx=18, pady=14)
         gora.grid(row=0, column=0, sticky="ew")
@@ -2240,6 +2354,13 @@ class App(tk.Tk):
         self.lbl_stan = tk.Label(gora, text="", bg=B["tlo3"], fg=B["tekst"],
                                  font=("Segoe UI Semibold", 11), padx=16, pady=6)
         self.lbl_stan.pack(side="right")
+        zamknij = tk.Label(gora, text="✕", bg=B["tlo2"], fg=B["przygasz"],
+                           font=("Segoe UI", 17), cursor="hand2", padx=10)
+        zamknij.pack(side="right")
+        zamknij.bind("<Button-1>", lambda _e: self.zamknij_obiekt())
+        zamknij.bind("<Enter>", lambda _e: zamknij.configure(fg=B["alarm"]))
+        zamknij.bind("<Leave>", lambda _e: zamknij.configure(fg=B["przygasz"]))
+
         self.lbl_miejsce = tk.Label(gora, text="", bg=B["tlo2"],
                                     fg=B["przygasz"], font=("Segoe UI", 11))
         self.lbl_miejsce.pack(side="right", padx=14)
@@ -2303,7 +2424,7 @@ class App(tk.Tk):
         self.polecenia = []
         opisy = [("Wpuść pojazd", 0, True), ("Otwórz na stałe", 1, False),
                  ("Zamknij", 2, False), ("Blokada", 3, False),
-                 ("Podgląd obiektu", 4, False)]
+                 ("Podgląd z animacją", 4, False)]
         for kol, (tekst, nr, glowny) in enumerate(opisy):
             b = tk.Button(
                 dol, text=tekst, relief="flat", bd=0, cursor="hand2",
@@ -2388,6 +2509,92 @@ class App(tk.Tk):
         plotno.create_rectangle(7, 12, 12, 31, fill=B["przygasz"], outline="")
         return plotno.create_line(12, 15, 40, 15, width=5, fill=B["ok"])
 
+    def _buduj_ekran_ogolny(self, ram):
+        """Ekran glowny: kampus i przeglad wszystkich obiektow naraz."""
+        karta = tk.Frame(ram, bg=B["tlo2"], padx=34, pady=28,
+                         highlightthickness=1, highlightbackground=B["zloto2"])
+        karta.place(relx=0.5, rely=0.5, anchor="center")
+
+        tk.Label(karta, text=NAZWA, bg=B["tlo2"], fg=B["zloto"],
+                 font=("Segoe UI Semibold", 26)).pack()
+        tk.Label(karta, text="Wybierz obiekt z listy po lewej, żeby nim "
+                             "sterować", bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 12)).pack(pady=(4, 22))
+
+        rzad = tk.Frame(karta, bg=B["tlo2"])
+        rzad.pack()
+        self.przeglad = []
+        for nr, o in enumerate(self.d["obiekty"]):
+            k = tk.Frame(rzad, bg=B["tlo3"], padx=22, pady=18, cursor="hand2",
+                         highlightthickness=1, highlightbackground=B["tlo3"])
+            k.grid(row=0, column=nr, padx=8)
+            plot = tk.Canvas(k, width=20, height=20, bg=B["tlo3"],
+                             highlightthickness=0)
+            plot.pack()
+            znak = plot.create_oval(3, 3, 17, 17, fill=B["ok"], outline="")
+            nazwa = tk.Label(k, text=o["nazwa"], bg=B["tlo3"], fg=B["tekst"],
+                             font=("Segoe UI Semibold", 14))
+            nazwa.pack(pady=(10, 0))
+            stan = tk.Label(k, text="—", bg=B["tlo3"],
+                            font=("Segoe UI Semibold", 11))
+            stan.pack()
+            licz = tk.Label(k, text="", bg=B["tlo3"], fg=B["przygasz"],
+                            font=("Segoe UI", 10))
+            licz.pack(pady=(6, 0))
+            for w in (k, plot, nazwa, stan, licz):
+                w.bind("<Button-1>", lambda _e, n=nr: self.otworz_obiekt(n))
+            self.przeglad.append({"ramka": k, "plot": plot, "znak": znak,
+                                  "stan": stan, "licz": licz,
+                                  "tlo": (k, plot, nazwa, stan, licz)})
+
+        tk.Label(karta, text="Kliknij obiekt, żeby otworzyć jego podgląd",
+                 bg=B["tlo2"], fg=B["przygasz"],
+                 font=("Segoe UI", 11)).pack(pady=(22, 0))
+
+    def odswiez_przeglad(self):
+        """Stany na ekranie glownym — liczone dla wszystkich obiektow."""
+        if not hasattr(self, "przeglad") or self.obiekt_otwarty:
+            return
+        dzis = datetime.now().strftime("%Y-%m-%d")
+        for nr, p in enumerate(self.przeglad):
+            o = self.d["obiekty"][nr]
+            st = self.stany[o["id"]]
+            if st["blokada"]:
+                barwa, opis = B["alarm"], "BLOKADA"
+            elif st["postep"] < 0.5:
+                barwa, opis = B["ok"], "OTWARTE"
+            else:
+                barwa, opis = B["alarm"], "ZAMKNIĘTE"
+            try:
+                p["plot"].itemconfigure(p["znak"], fill=barwa)
+            except tk.TclError:
+                pass
+            p["stan"].configure(text=opis, fg=barwa)
+            ile = sum(1 for h in self.d.get("historia", [])
+                      if h.get("obiekt") == o["id"]
+                      and str(h.get("kiedy", "")).startswith(dzis))
+            p["licz"].configure(text=f"{ile} wjazdów dziś")
+
+    def otworz_obiekt(self, nr):
+        """Wejscie w obiekt — karta zaslania ekran glowny."""
+        self.wybierz_obiekt(nr)
+        if not self.obiekt_otwarty:
+            self.ekran_ogolny.grid_remove()
+            self.karta_obiektu.grid(row=0, column=0, sticky="nsew")
+            self.obiekt_otwarty = True
+        self.odswiez_kafle()
+
+    def zamknij_obiekt(self):
+        """Krzyzyk — wracamy do ekranu glownego z tlem kampusu."""
+        if not self.obiekt_otwarty:
+            return
+        self.pokaz_scene(False)
+        self.karta_obiektu.grid_remove()
+        self.ekran_ogolny.grid(row=0, column=0, sticky="nsew")
+        self.obiekt_otwarty = False
+        self.odswiez_przeglad()
+        self.log("zamknięto podgląd obiektu")
+
     def pokaz_scene(self, pokaz=True):
         """Przelacza srodek miedzy podsumowaniem a scena z animacja."""
         if not hasattr(self, "scena_widoczna"):
@@ -2397,12 +2604,12 @@ class App(tk.Tk):
             self.scena.grid(row=0, column=0, sticky="nsew")
             self.scena_widoczna = True
             self.scena.rysuj()
-            self.polecenia[4].configure(text="Ukryj podgląd")
+            self.polecenia[4].configure(text="Ukryj animację")
         elif not pokaz and self.scena_widoczna:
             self.scena.grid_remove()
             self.podsumowanie.grid()
             self.scena_widoczna = False
-            self.polecenia[4].configure(text="Podgląd obiektu")
+            self.polecenia[4].configure(text="Podgląd z animacją")
 
     def przelacz_scene(self):
         self.pokaz_scene(not self.scena_widoczna)
@@ -2839,6 +3046,40 @@ class App(tk.Tk):
         self.suwak_tla.configure(command=przesun)
         przesun()
 
+        # --- lista stylow graficznych ---
+        r_styl2 = tk.Frame(w, bg=B["tlo"])
+        r_styl2.pack(fill="x", padx=24, pady=(18, 0))
+        tk.Label(r_styl2, text="Styl graficzny", bg=B["tlo"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 12)).pack(anchor="w")
+        tk.Label(r_styl2, text="Dwanaście palet barw. Zmiana działa od razu "
+                                "i zapisuje się w bazie.",
+                 bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 10)
+                 ).pack(anchor="w", pady=(2, 8))
+
+        siatka_st = tk.Frame(r_styl2, bg=B["tlo"])
+        siatka_st.pack(anchor="w")
+        biezacy = self.d.get("styl", 3)
+        for nr, (nazwa, paleta) in sorted(STYLE.items()):
+            kol, wier = (nr - 1) % 4, (nr - 1) // 4
+            k = tk.Frame(siatka_st, bg=B["tlo2"], cursor="hand2",
+                         highlightthickness=2,
+                         highlightbackground=B["zloto"] if nr == biezacy
+                         else B["tlo"])
+            k.grid(row=wier, column=kol, padx=(0, 8), pady=(0, 8), sticky="ew")
+            # probka trzech barw stylu — widac, co sie wybiera
+            probka = tk.Frame(k, bg=B["tlo2"])
+            probka.pack(fill="x", padx=10, pady=(10, 6))
+            for barwa in (paleta["tlo"], paleta["tlo3"], paleta["zloto"]):
+                tk.Frame(probka, bg=barwa, width=26, height=22).pack(side="left")
+            tk.Label(k, text=f"{nr} · {nazwa}", bg=B["tlo2"],
+                     fg=B["zloto"] if nr == biezacy else B["tekst"],
+                     font=("Segoe UI Semibold", 10)).pack(anchor="w", padx=10,
+                                                          pady=(0, 10))
+            for widget in (k, probka) + tuple(probka.winfo_children()):
+                widget.bind("<Button-1>", lambda _e, n=nr: self.zmien_styl(n))
+            k.winfo_children()[-1].bind("<Button-1>",
+                                        lambda _e, n=nr: self.zmien_styl(n))
+
         r_skroty = tk.Frame(r_tlo, bg=B["tlo"])
         r_skroty.pack(anchor="w", pady=(8, 0))
         for etykieta, wartosc in (("Zdjęcie w pełni", 8), ("Wyważone", 46),
@@ -2897,7 +3138,9 @@ class App(tk.Tk):
             self.lbl_miejsce.configure(text=o["miejsce"])
         self.pokaz_scene(False)
         self.odswiez_kafle()
-        self.scena.rysuj()
+        self.odswiez_przeglad()
+        if getattr(self, "obiekt_otwarty", False):
+            self.scena.rysuj()
 
     def przycisk_sceny(self, nr):
         """Polecenie z przycisku — z pytaniem i sprawdzeniem stanu.
@@ -3169,6 +3412,7 @@ class App(tk.Tk):
                 if getattr(self, "scena_widoczna", False):
                     self.scena.rysuj()
                 self.odswiez_kafle()
+                self.odswiez_przeglad()
         except tk.TclError:
             pass
         self.after(1000, self._petla)
@@ -3182,6 +3426,35 @@ class App(tk.Tk):
         self.przemaluj_tla()
         self.log("przezroczystość tła: "
                  + str(self.d.get("przezroczystosc_tla", 46)) + "%")
+
+    def zmien_styl(self, nr):
+        """Przelacza palete barw i przebudowuje okno."""
+        if self.d.get("styl", 3) == nr:
+            return
+        self.d["styl"] = nr
+        self.d["motyw"] = "jasny" if STYLE[nr][1].get("welon") else "ciemny"
+        zapisz(self.d)
+        self.log("styl: " + STYLE[nr][0])
+        self._przebuduj(styl=nr)
+
+    def _przebuduj(self, styl=None):
+        """Buduje okno od nowa w nowej palecie, zachowujac stan obiektow."""
+        if self.animacja:
+            self.after_cancel(self.animacja)
+            self.animacja = None
+        zastosuj_motyw(self.d.get("motyw") == "jasny", styl or self.d.get("styl"))
+        stan = {o["id"]: dict(s) for o, s in
+                zip(self.d["obiekty"], self.stany.values())}
+        otwarty = getattr(self, "obiekt_otwarty", False)
+        for w in self.winfo_children():
+            w.destroy()
+        self._tla = []
+        self.configure(bg=B["tlo"])
+        self._buduj()
+        self.stany.update(stan)
+        self.przelacz("ustawienia")
+        if otwarty:
+            self.otworz_obiekt(self.obiekt)
 
     def przelacz_motyw(self):
         if self.animacja:
@@ -3707,12 +3980,35 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             # recznie w Ustawieniach.
             if self.tryb_aktualizacji() == "sam":
                 self._wgraj_po_cichu(dane)
+            elif self._zalogowany:
+                self._pytaj_po_zalogowaniu(dane)
             else:
                 self._zapytaj_o_aktualizacje(dane)
         elif rodzaj == "aktualna":
             self._napis_pin("v" + VER + " — najnowsza")
         else:
             self._napis_pin("v" + VER)
+
+    def _pytaj_po_zalogowaniu(self, info):
+        """Pytanie o aktualizacje w oknie programu, po zalogowaniu.
+
+        Dyzurny widzi juz panel i wie, co sie dzieje na obiektach — dopiero
+        wtedy decyduje, czy zamknac program na czas podmiany plikow.
+        """
+        opis = (info.get("opis") or "").strip()
+        tresc = f"Dostępna jest wersja {info['wersja']}.\n\n"
+        if opis:
+            tresc += opis.split("\n\n", 1)[-1][:280] + "\n\n"
+        tresc += ("Wgranie potrwa kilkadziesiąt sekund. Program zamknie się "
+                  "i uruchomi ponownie — przez ten czas zapora i szlabany "
+                  "nie będą obsługiwane z tego komputera.")
+        if okno_pytania(self, "Nowa wersja programu", tresc,
+                        tak="Wgraj teraz", nie="Nie teraz"):
+            self._wgraj_po_cichu(info)
+        else:
+            self._pasek_informacyjny(
+                f"Wersja {info['wersja']} czeka — możesz ją wgrać "
+                "w Ustawieniach", B["uwaga"])
 
     def _zapytaj_o_aktualizacje(self, info):
         """Pyta raz, przed wpisaniem PIN-u. Zgoda zostaje zapamietana
@@ -3760,8 +4056,12 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         import queue
         import threading
         self._kolejka_wgrania = queue.Queue()
-        self._pasek_pin(0.0, f"Aktualizacja do {info['wersja']}")
-        self._napis_pin(f"v{VER} \u2192 {info['wersja']}", B["zloto"])
+        if self._zalogowany:
+            self._pasek_informacyjny(
+                f"Pobieram wersję {info['wersja']}...", B["uwaga"])
+        else:
+            self._pasek_pin(0.0, f"Aktualizacja do {info['wersja']}")
+            self._napis_pin(f"v{VER} \u2192 {info['wersja']}", B["zloto"])
         self.log(f'dostępna wersja {info["wersja"]} — wgrywam sama')
 
         def robota():
@@ -3791,7 +4091,12 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             return
 
         if rodzaj == "postep":
-            self._pasek_pin(tresc, f"Aktualizacja do {info['wersja']}")
+            if self._zalogowany:
+                self._pasek_informacyjny(
+                    f"Pobieram wersję {info['wersja']} — "
+                    f"{round(tresc * 100)}%", B["uwaga"])
+            else:
+                self._pasek_pin(tresc, f"Aktualizacja do {info['wersja']}")
             self.after(100, lambda: self._odbierz_wgranie(info))
             return
 
