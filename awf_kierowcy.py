@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "10.2.0"
+VER = "10.3.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -1004,6 +1004,10 @@ class EkranPin(tk.Frame):
         self._sr = 1.0
         self._przelicz(1.0)
 
+        # Czy PIN jest wciaz fabryczny — od tego zalezy, czy pokazujemy
+        # podpowiedz z numerem 1234.
+        self.pin_fabryczny = dane.get("pin") == zakoduj_pin("1234")
+
         self.wpisany = ""
         self.proby = 0
         self.info = ""
@@ -1325,18 +1329,26 @@ class EkranPin(tk.Frame):
                anchor="mm")
 
         # --- kropki PIN-u ---
-        ky = ty + p(58)
-        prom = p(7)
-        for i in range(max(4, len(self.wpisany))):
-            x = KW / 2 - p(36) + i * p(24)
+        # Wielkosc liczona od klawisza, nie stala: kropka ma 15% szerokosci
+        # klawisza, odstep 40%. Przy wiekszej klawiaturze rosna razem z nia,
+        # wiec z drugiego konca dyzurki widac, ile cyfr juz wpisano.
+        ky = ty + p(56)
+        prom = max(p(6), int(self.KLW * 0.15) // 2)
+        odstep = max(p(22), int(self.KLW * 0.40))
+        ile = max(4, len(self.wpisany))
+        x0 = KW / 2 - (ile - 1) * odstep / 2
+        for i in range(ile):
+            x = x0 + i * odstep
+            pole = [x - prom, ky, x + prom, ky + 2 * prom]
             if i < len(self.wpisany):
-                d.ellipse([x - prom, ky, x + prom, ky + 2 * prom],
-                          fill=M0["kropka"])
+                d.ellipse(pole, fill=M0["kropka"])
+                # jasna obwodka odkleja wypelniona kropke od tla
+                d.ellipse(pole, outline=(255, 255, 255, 90),
+                          width=max(1, p(1)))
             else:
-                d.ellipse([x - prom, ky, x + prom, ky + 2 * prom],
-                          outline=M0["pusta"], width=max(2, p(2)))
+                d.ellipse(pole, outline=M0["pusta"], width=max(2, p(3)))
         if self.info:
-            d.text((KW / 2, ky + p(30)), self.info,
+            d.text((KW / 2, ky + 2 * prom + p(18)), self.info,
                    font=self._czcionka(p(15), True), fill=(255, 150, 150),
                    anchor="mm")
 
@@ -1430,14 +1442,16 @@ class EkranPin(tk.Frame):
                 d.rounded_rectangle(
                     [sx, py + p(22), sx + max(p(8), int(szer * ulamek)),
                      py + p(29)], radius=p(4), fill=M0["zloto"])
-        else:
+        elif self.pin_fabryczny:
+            # Podpowiedz znika, gdy tylko ktos ustawi wlasny PIN — inaczej
+            # wisialaby na ekranie na stale i podawala numer, ktory juz
+            # nie dziala.
             cz_st = self._czcionka(p(15))
+            napis = "PIN fabryczny 1234 — zmień po pierwszym logowaniu"
             if not self.z_karta:
-                d.text((KW / 2 + p(1), py + p(5)),
-                       "PIN fabryczny 1234 — zmień po pierwszym logowaniu",
+                d.text((KW / 2 + p(1), py + p(5)), napis,
                        font=cz_st, fill=(0, 0, 0, 120), anchor="mm")
-            d.text((KW / 2, py + p(4)),
-                   "PIN fabryczny 1234 — zmień po pierwszym logowaniu",
+            d.text((KW / 2, py + p(4)), napis,
                    font=cz_st, fill=M0["pod"], anchor="mm")
 
         d.text((KW / 2, py + p(62)), "Nie pamiętam PIN-u",
@@ -3606,6 +3620,13 @@ class App(tk.Tk):
             return
         self.d["pin"] = zakoduj_pin(nowy)
         zapisz(self.d)
+        # Ekran logowania przestaje pokazywac podpowiedz z fabrycznym PIN-em.
+        ekran = getattr(self, "ekran_pin", None)
+        try:
+            if ekran is not None and ekran.winfo_exists():
+                ekran.pin_fabryczny = (nowy == "1234")
+        except tk.TclError:
+            pass
         messagebox.showinfo("PIN", "PIN zmieniony.", parent=self)
         self.log("zmieniono PIN")
 
