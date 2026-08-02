@@ -1,0 +1,61 @@
+==========================================================
+   AWF KIEROWCY  11.0.0
+==========================================================
+
+   KROK 1 — RAZ, ZEBY NUMERY BYLY JEDENASTKAMI
+----------------------------------------------------------
+
+   github.com/superdarco78/AWF-Kierowcy/releases
+   -> Draft a new release
+   -> Choose a tag: wpisz  v11.0.0
+      i wybierz "Create new tag: v11.0.0 on publish"
+   -> Tytul: AWF KIEROWCY 11.0.0
+   -> Publish release
+
+   Od tej chwili budowanie liczy od jedenastki:
+   11.0.1, 11.0.2 i dalej. Siodemki sie koncza.
+
+----------------------------------------------------------
+   KROK 2 — PORZADKI (raz)
+----------------------------------------------------------
+
+   Skasuj z repozytorium te pliki — to pozostalosci
+   ze starszych prob, program ich nie uzywa:
+
+     zasoby_wbudowane.py
+     wersja.txt
+     SPRAWDZ.bat
+     AWF-KIEROWCY-symulacja.html
+     PRZECZYTAJ.txt
+
+   Kasujesz: klikasz plik -> ikona kosza -> Commit changes
+   Opis:  Porzadki: usuniecie starych plikow [bez wydania]
+
+----------------------------------------------------------
+   KROK 3 — WGRANIE PACZKI
+----------------------------------------------------------
+
+   Rozpakuj, Ctrl+A, przeciagnij na GitHuba.
+
+   Commit summary:
+   Poprawki: kropki PIN-u, pasek postepu, numeracja
+
+   Optional extended description:
+   - kropki PIN-u liczone od szerokosci klawisza, 22 px zamiast 14
+   - napis "PIN fabryczny 1234" znika po ustawieniu wlasnego PIN-u
+   - jeden pasek postepu przy pobieraniu zamiast setki
+   - numeracja wersji uporzadkowana
+
+----------------------------------------------------------
+   GDYBY COS POSZLO NIE TAK
+----------------------------------------------------------
+
+   Wszystkie wczesniejsze wydania zostaja na GitHubie.
+   Mozesz zainstalowac dowolne — baza z numerami,
+   harmonogramami i historia zostaje nietknieta.
+
+   Przed kazda wieksza zmiana:
+   Ustawienia -> Zapisz kopie bazy
+
+==========================================================
+Monter24h.pl

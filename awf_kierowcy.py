@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "10.3.0"
+VER = "11.0.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
