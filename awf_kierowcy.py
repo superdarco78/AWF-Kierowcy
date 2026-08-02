@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "10.1.0"
+VER = "10.2.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -4058,7 +4058,8 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         self._kolejka_wgrania = queue.Queue()
         if self._zalogowany:
             self._pasek_informacyjny(
-                f"Pobieram wersję {info['wersja']}...", B["uwaga"])
+                f"Pobieram wersję {info['wersja']}...", B["uwaga"],
+                trwaly=True)
         else:
             self._pasek_pin(0.0, f"Aktualizacja do {info['wersja']}")
             self._napis_pin(f"v{VER} \u2192 {info['wersja']}", B["zloto"])
@@ -4094,7 +4095,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             if self._zalogowany:
                 self._pasek_informacyjny(
                     f"Pobieram wersję {info['wersja']} — "
-                    f"{round(tresc * 100)}%", B["uwaga"])
+                    f"{round(tresc * 100)}%", B["uwaga"], trwaly=True)
             else:
                 self._pasek_pin(tresc, f"Aktualizacja do {info['wersja']}")
             self.after(100, lambda: self._odbierz_wgranie(info))
@@ -4169,27 +4170,62 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
                 "Aktualizacja", tresc + "\n\nProgram działa w poprzedniej "
                 "wersji.", parent=self))
 
-    def _pasek_informacyjny(self, tekst, kolor):
-        """Waski pasek u gory, znika sam po kilku sekundach."""
-        pasek = tk.Frame(self, bg=kolor, height=34)
-        pasek.pack(fill="x", before=self.tresc)
-        pasek.pack_propagate(False)
-        tk.Label(pasek, text=tekst, bg=kolor, fg=B["naAkcencie"],
-                 font=("Segoe UI Semibold", 10)).pack(side="left", padx=18)
-        tk.Label(pasek, text="✕", bg=kolor, fg=B["naAkcencie"],
-                 font=("Segoe UI", 11), cursor="hand2", padx=16
-                 ).pack(side="right")
+    def _pasek_informacyjny(self, tekst, kolor, trwaly=False):
+        """Waski pasek u gory okna.
 
-        def zamknij(_e=None):
+        JEDEN pasek, nie nowy przy kazdym wywolaniu. Wczesniej kazde
+        wywolanie tworzylo kolejna ramke — przy pobieraniu aktualizacji,
+        gdzie tekst zmienia sie co procent, zasypywalo to caly ekran.
+        Teraz przy kolejnym wywolaniu podmieniamy tylko napis.
+
+        trwaly=True — pasek nie znika sam (uzywane przy pobieraniu).
+        """
+        istnieje = getattr(self, "_pasek_inf", None)
+        try:
+            zyje = istnieje is not None and istnieje.winfo_exists()
+        except tk.TclError:
+            zyje = False
+
+        if zyje:
+            istnieje.configure(bg=kolor)
+            self._pasek_inf_txt.configure(text=tekst, bg=kolor)
+            self._pasek_inf_x.configure(bg=kolor)
+        else:
+            pasek = tk.Frame(self, bg=kolor, height=34)
+            pasek.pack(fill="x", before=self.tresc)
+            pasek.pack_propagate(False)
+            self._pasek_inf = pasek
+            self._pasek_inf_txt = tk.Label(
+                pasek, text=tekst, bg=kolor, fg=B["naAkcencie"],
+                font=("Segoe UI Semibold", 10))
+            self._pasek_inf_txt.pack(side="left", padx=18)
+            self._pasek_inf_x = tk.Label(
+                pasek, text="✕", bg=kolor, fg=B["naAkcencie"],
+                font=("Segoe UI", 11), cursor="hand2", padx=16)
+            self._pasek_inf_x.pack(side="right")
+            for dziecko in (pasek, self._pasek_inf_txt, self._pasek_inf_x):
+                dziecko.bind("<Button-1>", lambda _e: self._zamknij_pasek())
+
+        # kazde wywolanie kasuje poprzednie odliczanie — inaczej pasek
+        # znikalby w trakcie pobierania
+        if getattr(self, "_zad_pasek", None):
             try:
-                pasek.destroy()
-                self.scena.rysuj()
-            except tk.TclError:
+                self.after_cancel(self._zad_pasek)
+            except (ValueError, tk.TclError):
                 pass
-        for dziecko in pasek.winfo_children():
-            dziecko.bind("<Button-1>", zamknij)
-        pasek.bind("<Button-1>", zamknij)
-        self.after(8000, zamknij)
+            self._zad_pasek = None
+        if not trwaly:
+            self._zad_pasek = self.after(8000, self._zamknij_pasek)
+
+    def _zamknij_pasek(self):
+        self._zad_pasek = None
+        pasek = getattr(self, "_pasek_inf", None)
+        try:
+            if pasek is not None and pasek.winfo_exists():
+                pasek.destroy()
+        except tk.TclError:
+            pass
+        self._pasek_inf = None
 
     def _sprawdz_aktualizacje(self):
         """Sprawdzenie przy starcie — po cichu. Gdy nie ma nowszej wersji

@@ -2,7 +2,7 @@
 ; Numer wersji wpisuje budowanie na GitHubie, nie trzeba go zmieniac recznie.
 
 #define NazwaApp    "AWF KIEROWCY"
-#define WersjaApp   "10.1.0"
+#define WersjaApp   "10.2.0"
 #define WydawcaApp  "Straz Akademicka AWF"
 #define StronaApp   "https://github.com/superdarco78/AWF-Kierowcy"
 #define PlikExe     "AWF-Kierowcy.exe"
