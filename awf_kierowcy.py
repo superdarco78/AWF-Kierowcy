@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "6.9.0"
+VER = "7.0.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -2199,25 +2199,34 @@ class App(tk.Tk):
     # ---------------- zakladki ----------------
 
     def _naglowek(self, rodzic, tytul, podtytul):
+        """Naglowek zakladki — zlota kreska z lewej porzadkuje kolumne."""
         r = tk.Frame(rodzic, bg=B["tlo"])
-        r.pack(fill="x", padx=24, pady=(20, 14))
-        tk.Label(r, text=tytul, bg=B["tlo"], fg=B["tekst"],
-                 font=("Segoe UI Semibold", 15)).pack(anchor="w")
-        tk.Label(r, text=podtytul, bg=B["tlo"], fg=B["przygasz"],
-                 font=("Segoe UI", 9)).pack(anchor="w")
+        r.pack(fill="x", padx=24, pady=(22, 16))
+        kreska = tk.Frame(r, bg=B["zloto"], width=3)
+        kreska.pack(side="left", fill="y", padx=(0, 14))
+        opis = tk.Frame(r, bg=B["tlo"])
+        opis.pack(side="left", fill="x", expand=True)
+        tk.Label(opis, text=tytul, bg=B["tlo"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 20)).pack(anchor="w")
+        tk.Label(opis, text=podtytul, bg=B["tlo"], fg=B["przygasz"],
+                 font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 0))
 
     def _tabela(self, rodzic, kolumny, szerokosci):
-        ram = tk.Frame(rodzic, bg=B["tlo"])
-        ram.pack(fill="both", expand=True, padx=24, pady=(0, 10))
+        """Tabela osadzona w karcie ze zlota obwodka."""
+        karta = tk.Frame(rodzic, bg=B["tlo2"], highlightthickness=1,
+                         highlightbackground=B["zloto2"])
+        karta.pack(fill="both", expand=True, padx=24, pady=(0, 14))
+        ram = tk.Frame(karta, bg=B["tlo2"], padx=14, pady=14)
+        ram.pack(fill="both", expand=True)
         styl = ttk.Style()
         styl.theme_use("clam")
         styl.configure("AWF.Treeview", background=B["tlo2"],
                        fieldbackground=B["tlo2"], foreground=B["tekst"],
-                       rowheight=30, borderwidth=0,
-                       font=("Segoe UI", 10))
-        styl.configure("AWF.Treeview.Heading", background=B["tlo3"],
-                       foreground=B["przygasz"], relief="flat",
-                       font=("Segoe UI Semibold", 8))
+                       rowheight=42, borderwidth=0,
+                       font=("Segoe UI", 12))
+        styl.configure("AWF.Treeview.Heading", background=B["tlo2"],
+                       foreground=B["zloto"], relief="flat", padding=(6, 10),
+                       font=("Segoe UI Semibold", 10))
         styl.map("AWF.Treeview", background=[("selected", B["akcent2"])],
                  foreground=[("selected", "#ffffff")])
         t = ttk.Treeview(ram, columns=kolumny, show="headings",
@@ -2236,14 +2245,16 @@ class App(tk.Tk):
 
     def _przyciski(self, rodzic, pozycje):
         r = tk.Frame(rodzic, bg=B["tlo"])
-        r.pack(fill="x", padx=24, pady=(0, 18))
+        r.pack(fill="x", padx=24, pady=(0, 20))
         for tekst, akcja, glowny in pozycje:
             tk.Button(r, text=tekst, command=akcja, relief="flat", bd=0,
-                      cursor="hand2", font=("Segoe UI", 10), padx=16, pady=8,
-                      bg=B["akcent"] if glowny else B["tlo3"],
-                      fg=B["naAkcencie"] if glowny else B["tekst"],
-                      activebackground=B["zloto"] if glowny else B["linia"]
-                      ).pack(side="left", padx=(0, 8))
+                      cursor="hand2", font=("Segoe UI Semibold", 13),
+                      padx=26, pady=13,
+                      bg=B["zloto"] if glowny else B["tlo3"],
+                      fg="#16301f" if glowny else B["tekst"],
+                      activebackground=B["zloto2"] if glowny else B["linia"],
+                      activeforeground="#16301f" if glowny else B["tekst"]
+                      ).pack(side="left", padx=(0, 10))
 
     def _buduj_kierowcow(self):
         w = self.widoki["kierowcy"]
@@ -2291,7 +2302,7 @@ class App(tk.Tk):
                          highlightbackground=B["linia"])
             k.pack(side="left", fill="x", expand=True, padx=(0, 8))
             tk.Label(k, text=etykieta.upper(), bg=B["tlo2"], fg=B["przygasz"],
-                     font=("Segoe UI", 8), anchor="w").pack(anchor="w", padx=14,
+                     font=("Segoe UI", 10), anchor="w").pack(anchor="w", padx=14,
                                                             pady=(12, 0))
             v = tk.Label(k, text="—", bg=B["tlo2"], fg=B["akcent"],
                          font=("Segoe UI Semibold", 13), anchor="w")
@@ -2343,18 +2354,18 @@ class App(tk.Tk):
                  font=("Segoe UI Semibold", 8)).grid(row=0, column=0,
                                                      sticky="w", pady=(0, 6))
         self.pole_nazwa = tk.Entry(siatka, bg=B["tlo3"], fg=B["tekst"],
-                                   relief="flat", font=("Segoe UI", 10),
+                                   relief="flat", font=("Segoe UI", 12),
                                    insertbackground=B["tekst"], width=28)
         self.pole_nazwa.insert(0, self.d.get("nazwa", NAZWA))
         self.pole_nazwa.grid(row=1, column=0, sticky="w", ipady=5, padx=(0, 10))
         self.pole_podtytul = tk.Entry(siatka, bg=B["tlo3"], fg=B["tekst"],
-                                      relief="flat", font=("Segoe UI", 10),
+                                      relief="flat", font=("Segoe UI", 12),
                                       insertbackground=B["tekst"], width=34)
         self.pole_podtytul.insert(0, self.d.get("podtytul", PODTYTUL))
         self.pole_podtytul.grid(row=1, column=1, sticky="w", ipady=5, padx=(0, 10))
         tk.Button(siatka, text="Zastosuj", command=self.zmien_nazwe,
                   relief="flat", bd=0, cursor="hand2", bg=B["akcent"],
-                  fg=B["naAkcencie"], font=("Segoe UI", 10), padx=16, pady=6
+                  fg=B["naAkcencie"], font=("Segoe UI", 12), padx=16, pady=6
                   ).grid(row=1, column=2, sticky="w")
 
         # --- gdzie trzymac baze ---
@@ -2368,7 +2379,7 @@ class App(tk.Tk):
         tk.Label(s2, text="Wskaż katalog w OneDrive, a ta sama baza będzie "
                           "widoczna na każdym komputerze, gdzie zainstalujesz "
                           "program. Nic nie trzeba wpisywać drugi raz.",
-                 bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 9),
+                 bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 11),
                  wraplength=760, justify="left").pack(anchor="w", pady=(4, 10))
         self.lbl_katalog = tk.Label(
             s2, text=katalog_danych(), bg=B["tlo3"], fg=B["tekst"],
@@ -2381,7 +2392,7 @@ class App(tk.Tk):
                 ("Wróć do domyślnego", self.katalog_domyslny_wroc, False),
                 ("Otwórz katalog", self.otworz_katalog, False)):
             tk.Button(pk, text=tekst, command=akcja, relief="flat", bd=0,
-                      cursor="hand2", font=("Segoe UI", 10), padx=14, pady=7,
+                      cursor="hand2", font=("Segoe UI", 12), padx=14, pady=7,
                       bg=B["akcent"] if glowny else B["tlo3"],
                       fg=B["naAkcencie"] if glowny else B["tekst"],
                       activebackground=B["zloto"] if glowny else B["linia"]
@@ -2400,7 +2411,7 @@ class App(tk.Tk):
                        variable=v_pelny, command=zmien_start, bg=B["tlo"],
                        fg=B["tekst"], selectcolor=B["tlo3"],
                        activebackground=B["tlo"], activeforeground=B["tekst"],
-                       font=("Segoe UI", 10)).pack(anchor="w", padx=24,
+                       font=("Segoe UI", 12)).pack(anchor="w", padx=24,
                                                    pady=(0, 14))
 
         self._przyciski(w, [("Co nowego w kolejnych wersjach", self.okno_historii, False),
@@ -2410,17 +2421,17 @@ class App(tk.Tk):
                             ("Sprawdź aktualizacje", self.sprawdz_recznie, True)])
         self.lbl_akt = tk.Label(
             w, text=f"Wersja programu: {VER}  ·  jeszcze nie sprawdzano",
-            bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 10))
+            bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 12))
         self.lbl_akt.pack(anchor="w", padx=24)
         tk.Label(w, text="Program sprawdza aktualizacje na ekranie logowania "
                          "i za każdym razem pyta, zanim cokolwiek wgra.",
                  bg=B["tlo"], fg=B["przygasz"],
-                 font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(4, 0))
+                 font=("Segoe UI", 11)).pack(anchor="w", padx=24, pady=(4, 0))
 
         r_auto = tk.Frame(w, bg=B["tlo"])
         r_auto.pack(anchor="w", padx=24, pady=(10, 0))
         self.lbl_auto = tk.Label(r_auto, bg=B["tlo"], fg=B["przygasz"],
-                                 font=("Segoe UI", 10))
+                                 font=("Segoe UI", 12))
         self.lbl_auto.pack(side="left", padx=(0, 12))
 
         def przelacz_auto():
@@ -2434,7 +2445,7 @@ class App(tk.Tk):
 
         b_auto = tk.Button(r_auto, command=przelacz_auto, relief="flat", bd=0,
                            cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
-                           font=("Segoe UI", 10), padx=16, pady=6)
+                           font=("Segoe UI", 12), padx=16, pady=6)
         b_auto.pack(side="left")
 
         def odswiez_auto():
@@ -2450,7 +2461,7 @@ class App(tk.Tk):
         r_styl = tk.Frame(w, bg=B["tlo"])
         r_styl.pack(anchor="w", padx=24, pady=(8, 0))
         lbl_styl = tk.Label(r_styl, bg=B["tlo"], fg=B["przygasz"],
-                            font=("Segoe UI", 10))
+                            font=("Segoe UI", 12))
         lbl_styl.pack(side="left", padx=(0, 12))
 
         def przelacz_styl():
@@ -2462,7 +2473,7 @@ class App(tk.Tk):
 
         b_styl = tk.Button(r_styl, command=przelacz_styl, relief="flat", bd=0,
                            cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
-                           font=("Segoe UI", 10), padx=16, pady=6)
+                           font=("Segoe UI", 12), padx=16, pady=6)
         b_styl.pack(side="left")
 
         def odswiez_styl():
@@ -2476,7 +2487,7 @@ class App(tk.Tk):
         tk.Label(w, text="Zmiana układu logowania działa od następnego "
                          "uruchomienia programu.",
                  bg=B["tlo"], fg=B["przygasz"],
-                 font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(4, 0))
+                 font=("Segoe UI", 11)).pack(anchor="w", padx=24, pady=(4, 0))
 
     # ---------------- dzialanie ----------------
 
