@@ -1,0 +1,53 @@
+==========================================================
+   AWF KIEROWCY — symulacja do pokazu
+==========================================================
+
+   Kliknij dwa razy:  AWF-KIEROWCY-symulacja.html
+
+   Otworzy sie w przegladarce. Nic nie trzeba instalowac,
+   nie potrzeba internetu — wszystko jest w jednym pliku.
+
+----------------------------------------------------------
+   CO POKAZAC
+----------------------------------------------------------
+
+1. ZOSTAW OKNO NA CHWILE
+   Co kilkanascie sekund ktos dzwoni na brame. W prawym
+   gornym rogu wyskakuje zgloszenie: kto, jaki numer
+   rejestracyjny, przy ktorym obiekcie stoi.
+   Pasek u gory odlicza 12 sekund.
+
+2. KLIKNIJ "WPUSC"
+   Slupki opadaja, samochod przejezdza, zapora sie zamyka.
+   Licznik wjazdow rosnie, wpis trafia do historii.
+
+3. KLIKNIJ "ODMOW"
+   Stan zmienia sie na "Dostep odrzucony", wpis takze
+   trafia do historii.
+
+4. PRZELACZ UKLAD I STYL
+   Dwa rzedy przyciskow u gory:
+     - 17 ukladow rozmieszczenia
+     - 12 stylow graficznych
+   Razem 204 kombinacje. Domyslnie: dok dolny + barwy uczelni.
+
+   Warte pokazania:
+     Uklad 16 - plan kampusu, obiekty stoja tam, gdzie sa
+     Uklad 17 - kiosk, jeden obiekt na caly ekran
+     Styl 3   - barwy uczelni (ustawienie domyslne)
+     Styl 12  - zloto na czerni, na prezentacje
+
+5. ZAKLADKA "USTAWIENIA"
+   Tak wyglada wybor wygladu w gotowym programie:
+   lista ukladow i lista stylow z probkami barw.
+   Kazdy dyzurny moze miec swoj.
+
+----------------------------------------------------------
+   UWAGA
+----------------------------------------------------------
+
+To jest symulacja wygladu, nie dzialajacy program.
+Dane sa przykladowe. Sluzy do wybrania ukladu przed
+przepisaniem go do wlasciwej aplikacji.
+
+Monter24h.pl
