@@ -1,61 +1,45 @@
 ==========================================================
-   AWF KIEROWCY  11.0.0
+   AWF KIEROWCY  12.0.0
 ==========================================================
 
-   KROK 1 — RAZ, ZEBY NUMERY BYLY JEDENASTKAMI
-----------------------------------------------------------
+   Numer wersji lezy teraz w zwyklym pliku:
 
-   github.com/superdarco78/AWF-Kierowcy/releases
-   -> Draft a new release
-   -> Choose a tag: wpisz  v11.0.0
-      i wybierz "Create new tag: v11.0.0 on publish"
-   -> Tytul: AWF KIEROWCY 11.0.0
-   -> Publish release
+      wersja-programu.txt
 
-   Od tej chwili budowanie liczy od jedenastki:
-   11.0.1, 11.0.2 i dalej. Siodemki sie koncza.
+   Podmienia sie razem z reszta paczki. Budowanie na
+   GitHubie go nie rusza, wiec numer, ktory tu jest,
+   to numer, ktory zobaczysz w programie.
+
+   Nic nie trzeba edytowac ani kopiowac.
 
 ----------------------------------------------------------
-   KROK 2 — PORZADKI (raz)
+   JAK WGRAC — tak jak zawsze
 ----------------------------------------------------------
 
-   Skasuj z repozytorium te pliki — to pozostalosci
-   ze starszych prob, program ich nie uzywa:
-
-     zasoby_wbudowane.py
-     wersja.txt
-     SPRAWDZ.bat
-     AWF-KIEROWCY-symulacja.html
-     PRZECZYTAJ.txt
-
-   Kasujesz: klikasz plik -> ikona kosza -> Commit changes
-   Opis:  Porzadki: usuniecie starych plikow [bez wydania]
-
-----------------------------------------------------------
-   KROK 3 — WGRANIE PACZKI
-----------------------------------------------------------
-
-   Rozpakuj, Ctrl+A, przeciagnij na GitHuba.
+1. Rozpakuj ta paczke na stara, w tym samym folderze.
+2. Ctrl+A, przeciagnij pliki na GitHuba.
+3. Wklej opisy, zatwierdz.
 
    Commit summary:
-   Poprawki: kropki PIN-u, pasek postepu, numeracja
+   Numer wersji z pliku, kropki PIN-u, pasek postepu
 
    Optional extended description:
-   - kropki PIN-u liczone od szerokosci klawisza, 22 px zamiast 14
-   - napis "PIN fabryczny 1234" znika po ustawieniu wlasnego PIN-u
+   - numer wersji czytany z pliku wersja-programu.txt
+   - kropki PIN-u liczone od szerokosci klawisza
+   - napis "PIN fabryczny 1234" znika po zmianie PIN-u
    - jeden pasek postepu przy pobieraniu zamiast setki
-   - numeracja wersji uporzadkowana
+
+4. Uruchom program — sam zaproponuje aktualizacje.
 
 ----------------------------------------------------------
    GDYBY COS POSZLO NIE TAK
 ----------------------------------------------------------
 
-   Wszystkie wczesniejsze wydania zostaja na GitHubie.
-   Mozesz zainstalowac dowolne — baza z numerami,
-   harmonogramami i historia zostaje nietknieta.
+   Wszystkie wczesniejsze wydania sa na GitHubie:
+   github.com/superdarco78/AWF-Kierowcy/releases
 
-   Przed kazda wieksza zmiana:
-   Ustawienia -> Zapisz kopie bazy
+   Baza z numerami i historia zostaje nietknieta.
+   Przed wieksza zmiana: Ustawienia -> Zapisz kopie bazy
 
 ==========================================================
 Monter24h.pl

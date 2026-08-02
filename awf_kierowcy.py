@@ -22,7 +22,30 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "11.0.0"
+VER = "12.0.0"
+
+
+def wersja_programu():
+    """Numer wersji pokazywany w programie.
+
+    Bierzemy go z pliku wersja-programu.txt lezacego obok programu.
+    Powod: budowanie na GitHubie nadpisuje stala VER wlasnym numerem,
+    wiec wpisanie czegokolwiek w kodzie nie ma znaczenia. Zwykly plik
+    tekstowy nie jest przez nikogo ruszany — podmienia sie razem
+    z reszta paczki i pokazuje dokladnie to, co w nim jest.
+
+    Gdy pliku nie ma, zostaje numer ze stalej VER.
+    """
+    plik = zasob("wersja-programu.txt")
+    if plik:
+        try:
+            with open(plik, encoding="utf-8") as f:
+                napis = f.read().strip().lstrip("vV")
+            if napis and napis[0].isdigit():
+                return napis
+        except OSError:
+            pass
+    return VER
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -1016,7 +1039,7 @@ class EkranPin(tk.Frame):
         self.postep_stan = None          # (ulamek, tekst) albo None
         self.pytanie = None              # {"wersja":.., "tak":fn, "nie":fn}
         self._guziki = []
-        self.wersja_napis = "v" + VER
+        self.wersja_napis = "v" + wersja_programu()
         self._wcisniety = None
         self._tlo_tk = None
         self._karta_tk = None
@@ -2143,7 +2166,7 @@ class App(tk.Tk):
                 self.b_motyw = b
 
         self.lbl_wer_gora = tk.Label(
-            self.gora, text="v" + VER, bg=B["tlo2"], fg=B["zloto"],
+            self.gora, text="v" + wersja_programu(), bg=B["tlo2"], fg=B["zloto"],
             font=("Segoe UI Semibold", 9), padx=8)
         self.lbl_wer_gora.pack(side="right")
 
@@ -2168,7 +2191,7 @@ class App(tk.Tk):
                               "  ·  straz@awf.edu.pl", bg=B["tlo2"],
                  fg=B["przygasz"], font=("Segoe UI", 8)).pack(side="left", padx=14)
         self.lbl_wersja = tk.Label(
-            stopka, text=f"{self.d.get('nazwa', NAZWA)} {VER}  ·  Straż Akademicka",
+            stopka, text=f"{self.d.get('nazwa', NAZWA)} {wersja_programu()}  ·  Straż Akademicka",
             bg=B["tlo2"], fg=B["przygasz"], font=("Segoe UI", 8))
         self.lbl_wersja.pack(side="right", padx=14)
 
@@ -2934,7 +2957,7 @@ class App(tk.Tk):
                             ("Zmień PIN", self.zmien_pin, False),
                             ("Sprawdź aktualizacje", self.sprawdz_recznie, True)])
         self.lbl_akt = tk.Label(
-            w, text=f"Wersja programu: {VER}  ·  jeszcze nie sprawdzano",
+            w, text=f"Wersja programu: {wersja_programu()}  ·  jeszcze nie sprawdzano",
             bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 12))
         self.lbl_akt.pack(anchor="w", padx=24)
         tk.Label(w, text="Program sprawdza aktualizacje na ekranie logowania, "
@@ -3508,7 +3531,7 @@ class App(tk.Tk):
         zapisz(self.d)
         self.title(f'{self.d["nazwa"]} — {self.d["podtytul"]}')
         self.lbl_wersja.configure(
-            text=f'{self.d["nazwa"]} {VER}  ·  Straż Akademicka')
+            text=f'{self.d["nazwa"]} {wersja_programu()}  ·  Straż Akademicka')
         self.log("nazwa systemu: " + self.d["nazwa"])
 
     def wybierz_katalog(self):
@@ -3974,7 +3997,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         except ImportError:
             return
         if self.tryb_aktualizacji() == "wylaczone":
-            self._napis_pin("v" + VER)
+            self._napis_pin("v" + wersja_programu())
             return
         import queue
         import threading
@@ -4006,9 +4029,9 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             else:
                 self._zapytaj_o_aktualizacje(dane)
         elif rodzaj == "aktualna":
-            self._napis_pin("v" + VER + " — najnowsza")
+            self._napis_pin("v" + wersja_programu() + " — najnowsza")
         else:
-            self._napis_pin("v" + VER)
+            self._napis_pin("v" + wersja_programu())
 
     def _pytaj_po_zalogowaniu(self, info):
         """Pytanie o aktualizacje w oknie programu, po zalogowaniu.
@@ -4083,7 +4106,8 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
                 trwaly=True)
         else:
             self._pasek_pin(0.0, f"Aktualizacja do {info['wersja']}")
-            self._napis_pin(f"v{VER} \u2192 {info['wersja']}", B["zloto"])
+            self._napis_pin(f"v{wersja_programu()} \u2192 {info['wersja']}",
+                            B["zloto"])
         self.log(f'dostępna wersja {info["wersja"]} — wgrywam sama')
 
         def robota():
@@ -4131,7 +4155,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             # Nieudane pobranie nie moze przeszkodzic w zalogowaniu —
             # odblokowujemy klawiature i zostajemy na starej wersji.
             self._schowaj_pasek_pin()
-            self._napis_pin("v" + VER)
+            self._napis_pin("v" + wersja_programu())
             self.log("cicha aktualizacja nieudana: " + str(tresc))
             return
 
@@ -4181,8 +4205,8 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             return
         rodzaj, tresc = wynik
         if rodzaj == "OK":
-            self.log(f"zaktualizowano do wersji {tresc or VER}")
-            nowa = tresc or VER
+            self.log(f"zaktualizowano do wersji {tresc or wersja_programu()}")
+            nowa = tresc or wersja_programu()
             self.after(600, lambda: self._pasek_informacyjny(
                 f"Zaktualizowano do wersji {nowa}", B["ok"]))
         else:
@@ -4275,7 +4299,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         if rodzaj == "jest":
             self._jest_aktualizacja(dane)
         elif rodzaj == "aktualna":
-            self.log(f"wersja {VER} — najnowsza")
+            self.log(f"wersja {wersja_programu()} — najnowsza")
         else:
             self.log("nie sprawdzono aktualizacji: " + str(dane))
 
@@ -4303,7 +4327,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
         gora.pack_propagate(False)
         tk.Label(gora, text="Historia wersji", bg=B["tlo2"], fg=B["tekst"],
                  font=("Segoe UI Semibold", 13)).pack(side="left", padx=18)
-        tk.Label(gora, text="masz " + VER, bg=B["tlo2"], fg=B["zloto"],
+        tk.Label(gora, text="masz " + wersja_programu(), bg=B["tlo2"], fg=B["zloto"],
                  font=("Segoe UI Semibold", 10)).pack(side="right", padx=18)
 
         pole = tk.Text(w, bg=B["tlo"], fg=B["tekst"], relief="flat",

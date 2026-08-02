@@ -42,6 +42,7 @@ python -m PyInstaller --onedir --windowed --clean --noupx ^
   --add-data "logo-awf.png;." ^
   --add-data "kiosk-tlo.jpg;." ^
   --add-data "kiosk-uklad.json;." ^
+  --add-data "wersja-programu.txt;." ^
   --add-data "kiosk-korpus1.png;." ^
   --add-data "kiosk-korpus2.png;." ^
   --add-data "kiosk-korpus3.png;." ^
