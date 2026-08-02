@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "7.4.0"
+VER = "7.5.1"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -1109,10 +1109,19 @@ class EkranPin(tk.Frame):
             gorny = max(0, int((nowy.height - H) * 0.45))
             kadr = nowy.crop((lewy, gorny, lewy + W, gorny + H)).convert("RGBA")
             M0 = self.MOTYW["jasny" if B["welon"] else "ciemny"]
-            # Kadr przyciemniamy lekko, zeby bylo widac kampus...
+            # Przyciemnienie idzie za suwakiem z Ustawien — ekran logowania
+            # i panel maja wygladac tak samo.
+            rodzic = self.master
+            proc = 46
+            try:
+                proc = int((getattr(rodzic, "d", {}) or {}).get(
+                    "przezroczystosc_tla", 46))
+            except (TypeError, ValueError):
+                pass
+            proc = max(0, min(100, proc))
             kadr = Image.alpha_composite(
                 kadr, Image.new("RGBA", (W, H),
-                                (4, 14, 9, int(M0["przyciemnij"] * 0.62))))
+                                (4, 14, 9, int(proc * 255 / 100 * 0.62))))
             # ...a ciemne podloze dajemy tylko tam, gdzie leza napisy.
             # Pomiar: pod trescia jasnosc spada ze 100 na 37, wiec kontrast
             # opisow rosnie z 4,6 do 11,3, a zdjecie dookola zostaje jasne.
@@ -1188,10 +1197,12 @@ class EkranPin(tk.Frame):
         # --- godlo ---
         gr = p(100 if self.z_karta else 116)
         gy = p(40)
+        # Godlo nie ma juz bialego kola — poswiata daje mu oddech na zdjeciu
+        # i odkleja je od tla, zeby nie wtapialo sie w budynek.
         pos = Image.new("RGBA", (int(gr * 1.7),) * 2, (0, 0, 0, 0))
         ImageDraw.Draw(pos).ellipse(
-            [gr * 0.26, gr * 0.26, gr * 1.44, gr * 1.44],
-            fill=(255, 255, 255, 40) if not B["welon"] else (3, 103, 68, 34))
+            [gr * 0.22, gr * 0.22, gr * 1.48, gr * 1.48],
+            fill=(0, 0, 0, 96) if not B["welon"] else (255, 255, 255, 120))
         karta.alpha_composite(pos.filter(ImageFilter.GaussianBlur(p(17))),
                               ((KW - pos.width) // 2, gy - int(gr * 0.35)))
         godlo = None
@@ -1210,10 +1221,10 @@ class EkranPin(tk.Frame):
         if godlo is not None:
             karta.alpha_composite(godlo.resize((gr, gr), Image.LANCZOS),
                                   ((KW - gr) // 2, gy))
-        pier = int(gr * 1.09)
-        d.ellipse([(KW - pier) // 2, gy - p(5),
-                   (KW + pier) // 2, gy - p(5) + pier],
-                  outline=M0["zloto"] + (150,), width=max(1, p(1)))
+        pier = int(gr * 1.16)
+        d.ellipse([(KW - pier) // 2, gy - int(gr * 0.08),
+                   (KW + pier) // 2, gy - int(gr * 0.08) + pier],
+                  outline=M0["zloto"] + (130,), width=max(1, p(1)))
 
         # --- nazwa i podtytul ---
         ty = gy + gr + p(42)
@@ -2056,6 +2067,34 @@ class App(tk.Tk):
         self.przelacz("podglad")
         self._zmien_obiekt()
 
+    def zacienienie(self):
+        """Ile zdjecia przykrywamy — 0 do 255, liczone z ustawien.
+
+        W bazie trzymamy procent, bo tak jest czytelniej w pliku.
+        Domyslnie 46, czyli tyle, co dotad.
+        """
+        proc = self.d.get("przezroczystosc_tla")
+        if proc is None:
+            proc = 46
+        return max(0, min(100, int(proc))) * 255 // 100
+
+    def przemaluj_tla(self):
+        """Przelicza wszystkie tla po przesunieciu suwaka."""
+        for etykieta in getattr(self, "_tla", []):
+            try:
+                if etykieta.winfo_exists():
+                    etykieta._rozm = None
+                    etykieta._przelicz()
+            except (tk.TclError, AttributeError):
+                pass
+        ekran = getattr(self, "ekran_pin", None)
+        try:
+            if ekran is not None and ekran.winfo_exists():
+                ekran._rozmiar = None
+                ekran._na_zmiane()
+        except tk.TclError:
+            pass
+
     def tlo_kampusu(self, ramka):
         """Zdjecie kampusu jako tlo — to samo, co na ekranie logowania.
 
@@ -2066,6 +2105,9 @@ class App(tk.Tk):
         etykieta = tk.Label(ramka, bd=0, bg=B["tlo"])
         etykieta.place(x=0, y=0, relwidth=1, relheight=1)
         etykieta.lower()
+        if not hasattr(self, "_tla"):
+            self._tla = []
+        self._tla.append(etykieta)
 
         def przelicz(_e=None):
             try:
@@ -2096,12 +2138,14 @@ class App(tk.Tk):
                 ly = max(0, int((n.height - H) * 0.42))
                 kadr = n.crop((lx, ly, lx + W, ly + H)).convert("RGBA")
                 # Krycie dobrane pomiarem: przy 214 zdjecie znikalo pod
-                # jednolita plama. Przy 176 widac kampus, a panele na
-                # wierzchu sa nieprzezroczyste, wiec tresc zostaje czytelna.
-                # Kadr jak przy logowaniu — lekko przyciemniony, z zaslona
-                # pod trescia. Zdjecie przy krawedziach zostaje widoczne,
-                # a napisy dostaja ciemne podloze.
-                kryjacy = (244, 248, 247, 96) if B["welon"] else (2, 16, 10, 118)
+                # Przezroczystosc ustawia uzytkownik w Ustawieniach:
+                # 0 = zdjecie ostre i pelne, 100 = calkiem zgaszone.
+                # Panele z trescia sa nieprzezroczyste, wiec czytelnosc
+                # danych nie zalezy od tego suwaka.
+                zac = self.zacienienie()
+                moc = 0.16 + zac / 255 * 0.46
+                kryjacy = ((244, 248, 247, zac) if B["welon"]
+                           else (2, 16, 10, zac))
                 kadr = Image.alpha_composite(
                     kadr, Image.new("RGBA", (W, H), kryjacy))
                 # winieta: narozniki ciemniejsze, srodek jasniejszy
@@ -2110,7 +2154,7 @@ class App(tk.Tk):
                     [-W * 0.30, -H * 0.40, W * 1.30, H * 1.40], fill=255)
                 win = win.filter(ImageFilter.GaussianBlur(
                     max(40, min(W, H) // 6))).point(
-                        lambda v: int((255 - v) * (0.22 if B["welon"] else 0.34)))
+                        lambda v, m=moc: int((255 - v) * m))
                 barwa_win = (255, 255, 255) if B["welon"] else (0, 0, 0)
                 kadr.paste(Image.new("RGBA", (W, H), barwa_win + (255,)),
                            (0, 0), win)
@@ -2119,6 +2163,7 @@ class App(tk.Tk):
             except (OSError, ValueError, MemoryError):
                 pass
 
+        etykieta._przelicz = przelicz
         ramka.bind("<Configure>", przelicz, add="+")
         ramka.after(80, przelicz)
         return etykieta
@@ -2727,6 +2772,7 @@ class App(tk.Tk):
             self.d["karta_logowania"] = not self.d.get("karta_logowania", False)
             zapisz(self.d)
             odswiez_styl()
+
             self.log("układ logowania: "
                      + ("karta" if self.d["karta_logowania"] else "bez karty"))
 
@@ -2743,6 +2789,67 @@ class App(tk.Tk):
             b_styl.configure(text="Pokaż kartę" if not karta else "Bez karty")
 
         odswiez_styl()
+
+        # --- suwak przezroczystosci tla ---
+        r_tlo = tk.Frame(w, bg=B["tlo"])
+        r_tlo.pack(fill="x", padx=24, pady=(14, 0))
+        naglowek_tla = tk.Frame(r_tlo, bg=B["tlo"])
+        naglowek_tla.pack(fill="x")
+        tk.Label(naglowek_tla, text="Przezroczystość tła", bg=B["tlo"],
+                 fg=B["tekst"], font=("Segoe UI Semibold", 12)).pack(side="left")
+        self.lbl_tlo = tk.Label(naglowek_tla, bg=B["tlo"], fg=B["zloto"],
+                                font=("Segoe UI Semibold", 12))
+        self.lbl_tlo.pack(side="right")
+        tk.Label(r_tlo, text="Im mniej, tym wyraźniej widać zdjęcie kampusu. "
+                             "Panele z danymi zostają czytelne niezależnie "
+                             "od ustawienia.",
+                 bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 10),
+                 justify="left", wraplength=560).pack(anchor="w", pady=(2, 6))
+
+        styl_suwak = ttk.Style()
+        styl_suwak.configure("AWF.Horizontal.TScale", background=B["tlo"],
+                             troughcolor=B["tlo3"], borderwidth=0)
+        self.suwak_tla = ttk.Scale(r_tlo, from_=0, to=100, orient="horizontal",
+                                   style="AWF.Horizontal.TScale", length=560)
+        self.suwak_tla.set(self.d.get("przezroczystosc_tla", 46))
+        self.suwak_tla.pack(anchor="w")
+
+        def opis_tla(proc):
+            if proc <= 15:
+                return "zdjęcie w pełni"
+            if proc <= 40:
+                return "zdjęcie wyraźne"
+            if proc <= 65:
+                return "wyważone"
+            if proc <= 85:
+                return "zdjęcie przygaszone"
+            return "prawie jednolite tło"
+
+        def przesun(_=None):
+            proc = int(round(float(self.suwak_tla.get())))
+            self.lbl_tlo.configure(text=f"{proc}%  ·  {opis_tla(proc)}")
+            if self.d.get("przezroczystosc_tla") == proc:
+                return
+            self.d["przezroczystosc_tla"] = proc
+            # przemalowanie jest kosztowne, wiec czekamy az suwak stanie
+            if getattr(self, "_zad_tlo", None):
+                self.after_cancel(self._zad_tlo)
+            self._zad_tlo = self.after(220, self._zastosuj_tlo)
+
+        self.suwak_tla.configure(command=przesun)
+        przesun()
+
+        r_skroty = tk.Frame(r_tlo, bg=B["tlo"])
+        r_skroty.pack(anchor="w", pady=(8, 0))
+        for etykieta, wartosc in (("Zdjęcie w pełni", 8), ("Wyważone", 46),
+                                  ("Przygaszone", 78), ("Bez zdjęcia", 100)):
+            tk.Button(r_skroty, text=etykieta, relief="flat", bd=0,
+                      cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                      activebackground=B["linia"], font=("Segoe UI", 10),
+                      padx=14, pady=7,
+                      command=lambda v=wartosc: (self.suwak_tla.set(v),
+                                                 przesun())
+                      ).pack(side="left", padx=(0, 8))
         tk.Label(w, text="Zmiana układu logowania działa od następnego "
                          "uruchomienia programu.",
                  bg=B["tlo"], fg=B["przygasz"],
@@ -3067,6 +3174,14 @@ class App(tk.Tk):
         self.after(1000, self._petla)
 
     # ---------------- narzedzia ----------------
+
+    def _zastosuj_tlo(self):
+        """Zapisuje i przemalowuje — wywolywane po zatrzymaniu suwaka."""
+        self._zad_tlo = None
+        zapisz(self.d)
+        self.przemaluj_tla()
+        self.log("przezroczystość tła: "
+                 + str(self.d.get("przezroczystosc_tla", 46)) + "%")
 
     def przelacz_motyw(self):
         if self.animacja:
