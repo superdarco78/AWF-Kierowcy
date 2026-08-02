@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "7.0.0"
+VER = "7.1.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -2028,6 +2028,7 @@ class App(tk.Tk):
         self.widoki["podglad"] = self._buduj_podglad()
         for klucz in ("kierowcy", "sterownik", "historia", "ustawienia"):
             self.widoki[klucz] = tk.Frame(self.tresc, bg=B["tlo"])
+            self.tlo_kampusu(self.widoki[klucz])
 
         self._buduj_kierowcow()
         self._buduj_sterownik()
@@ -2048,6 +2049,60 @@ class App(tk.Tk):
         self.przelacz("podglad")
         self._zmien_obiekt()
 
+    def tlo_kampusu(self, ramka):
+        """Zdjecie kampusu jako tlo — to samo, co na ekranie logowania.
+
+        Program ma wygladac jak jedna calosc: po wpisaniu PIN-u zdjecie
+        zostaje, a panele leza na nim. Kadr jest przyciemniony mocniej niz
+        przy logowaniu, bo tu na wierzchu jest wiecej tresci.
+        """
+        etykieta = tk.Label(ramka, bd=0, bg=B["tlo"])
+        etykieta.place(x=0, y=0, relwidth=1, relheight=1)
+        etykieta.lower()
+
+        def przelicz(_e=None):
+            try:
+                W, H = ramka.winfo_width(), ramka.winfo_height()
+            except tk.TclError:
+                return
+            if W < 60 or H < 60 or getattr(etykieta, "_rozm", None) == (W, H):
+                return
+            etykieta._rozm = (W, H)
+            obraz = None
+            try:
+                from tlo_wbudowane import obraz as z_kodu
+                obraz = z_kodu()
+            except ImportError:
+                plik = zasob("logowanie-tlo.jpg")
+                if plik:
+                    try:
+                        obraz = Image.open(plik).convert("RGB")
+                    except (OSError, ValueError):
+                        obraz = None
+            if obraz is None:
+                return
+            try:
+                sk = max(W / obraz.width, H / obraz.height) * 1.02
+                n = obraz.resize((max(W, int(obraz.width * sk)),
+                                  max(H, int(obraz.height * sk))), Image.LANCZOS)
+                lx = max(0, (n.width - W) // 2)
+                ly = max(0, int((n.height - H) * 0.42))
+                kadr = n.crop((lx, ly, lx + W, ly + H)).convert("RGBA")
+                # Krycie dobrane pomiarem: przy 214 zdjecie znikalo pod
+                # jednolita plama. Przy 176 widac kampus, a panele na
+                # wierzchu sa nieprzezroczyste, wiec tresc zostaje czytelna.
+                kryjacy = (244, 248, 247, 176) if B["welon"] else (2, 16, 10, 188)
+                kadr = Image.alpha_composite(
+                    kadr, Image.new("RGBA", (W, H), kryjacy))
+                etykieta._tk = ImageTk.PhotoImage(kadr.convert("RGB"))
+                etykieta.configure(image=etykieta._tk)
+            except (OSError, ValueError, MemoryError):
+                pass
+
+        ramka.bind("<Configure>", przelicz, add="+")
+        ramka.after(80, przelicz)
+        return etykieta
+
     def _buduj_podglad(self):
         """Uklad podgladu: kafle obiektow po lewej, scena i polecenia po prawej.
 
@@ -2058,6 +2113,7 @@ class App(tk.Tk):
         ram = tk.Frame(self.tresc, bg=B["tlo"])
         ram.columnconfigure(1, weight=1)
         ram.rowconfigure(0, weight=1)
+        self.tlo_kampusu(ram)
 
         # --- lewa kolumna: kafle obiektow ---
         lewa = tk.Frame(ram, bg=B["tlo"], width=300)
@@ -2073,10 +2129,11 @@ class App(tk.Tk):
             k.pack(fill="x", pady=(0, 10))
             wn = tk.Frame(k, bg=B["tlo2"], padx=16, pady=14)
             wn.pack(fill="x")
-            lam = tk.Canvas(wn, width=16, height=16, bg=B["tlo2"],
+            # Znaczek obiektu: slupki albo szlaban — od razu widac, co to jest.
+            lam = tk.Canvas(wn, width=44, height=40, bg=B["tlo2"],
                             highlightthickness=0)
-            lam.pack(side="left", padx=(0, 12))
-            kropka = lam.create_oval(2, 2, 14, 14, fill=B["ok"], outline="")
+            lam.pack(side="left", padx=(0, 14))
+            kropka = self._znaczek(lam, o["typ"])
             opis = tk.Frame(wn, bg=B["tlo2"])
             opis.pack(side="left", fill="x", expand=True)
             nazwa = tk.Label(opis, text=o["nazwa"], bg=B["tlo2"], fg=B["tekst"],
@@ -2141,6 +2198,20 @@ class App(tk.Tk):
             self.polecenia.append(b)
         return ram
 
+    def _znaczek(self, plotno, typ):
+        """Maly rysunek obiektu na kaflu. Zwraca element, ktory zmienia barwe
+        razem ze stanem — dla slupkow srodkowy slupek, dla szlabanu belka."""
+        if typ == "slupki":
+            plotno.create_rectangle(4, 30, 40, 34, fill=B["linia"], outline="")
+            for x in (9, 20, 31):
+                plotno.create_rectangle(x, 12, x + 6, 30, fill=B["przygasz"],
+                                        outline="")
+            return plotno.create_rectangle(20, 12, 26, 30, fill=B["ok"],
+                                           outline="")
+        plotno.create_rectangle(4, 30, 40, 34, fill=B["linia"], outline="")
+        plotno.create_rectangle(7, 12, 12, 31, fill=B["przygasz"], outline="")
+        return plotno.create_line(12, 15, 40, 15, width=5, fill=B["ok"])
+
     def wybierz_obiekt(self, nr):
         """Klikniecie w kafel obiektu."""
         if nr == self.obiekt:
@@ -2173,7 +2244,10 @@ class App(tk.Tk):
                 barwa, tekst = B["uwaga"], "OTWARTE"
             else:
                 barwa, tekst = B["ok"], "ZAMKNIĘTE"
-            k["lampka"].itemconfigure(k["kropka"], fill=barwa)
+            try:
+                k["lampka"].itemconfigure(k["kropka"], fill=barwa)
+            except tk.TclError:
+                pass
             k["stan"].configure(text=tekst.capitalize(), fg=barwa)
         self.lam_stan.itemconfigure(self._kropka_stan, fill=kolor)
         self.lbl_stan.configure(text=opis, fg=kolor)
@@ -2556,6 +2630,7 @@ class App(tk.Tk):
                                "Pojazd może przejechać.")
                 return
             self.wpusc()
+            self.okno_animacji("Wpuszczanie pojazdu")
 
         elif nr == 1:
             if self.scena.zablokowana:
@@ -2574,6 +2649,7 @@ class App(tk.Tk):
                             tak="Otwórz na stałe", nie="Anuluj",
                             ostrzezenie=True):
                 self.recznie(True)
+                self.okno_animacji("Otwieranie na stałe")
 
         elif nr == 2:
             if not otwarte and not stale:
@@ -2587,6 +2663,7 @@ class App(tk.Tk):
                             "Upewnij się, że pod belką nie stoi pojazd.",
                             tak="Zamknij", nie="Anuluj", ostrzezenie=True):
                 self.recznie(False)
+                self.okno_animacji("Zamykanie")
 
         else:
             if self.scena.zablokowana:
@@ -2602,6 +2679,67 @@ class App(tk.Tk):
                               tak="Załóż blokadę", nie="Anuluj",
                               ostrzezenie=True):
                 self.blokada()
+
+    def okno_animacji(self, tytul):
+        """Osobne okno z animacja wybranego obiektu.
+
+        Wyskakuje po zatwierdzeniu polecenia i pokazuje, co dzieje sie na
+        obiekcie — z bliska, na calym oknie. Zamyka sie samo, gdy ruch
+        dobiegnie konca.
+        """
+        istniejace = getattr(self, "_okno_ruchu", None)
+        if istniejace is not None and istniejace.winfo_exists():
+            istniejace.destroy()
+
+        o = self.d["obiekty"][self.obiekt]
+        w = tk.Toplevel(self)
+        self._okno_ruchu = w
+        w.title(f'{o["nazwa"]} — {tytul}')
+        w.configure(bg=B["tlo2"])
+        w.transient(self)
+        szer, wys = 900, 620
+        w.geometry(f"{szer}x{wys}")
+
+        pasek = tk.Frame(w, bg=B["tlo2"], padx=22, pady=16)
+        pasek.pack(fill="x")
+        tk.Label(pasek, text=o["nazwa"], bg=B["tlo2"], fg=B["tekst"],
+                 font=("Segoe UI Semibold", 18)).pack(side="left")
+        lbl = tk.Label(pasek, text=tytul, bg=B["tlo3"], fg=B["zloto"],
+                       font=("Segoe UI Semibold", 12), padx=16, pady=7)
+        lbl.pack(side="right")
+
+        scena = Scena(w)
+        scena.czysta = True
+        scena.material = self.scena.material
+        scena.typ = self.scena.typ
+        scena.pack(fill="both", expand=True, padx=22, pady=(0, 16))
+
+        tk.Button(w, text="Zamknij podgląd", command=w.destroy, relief="flat",
+                  bd=0, cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
+                  activebackground=B["linia"], font=("Segoe UI", 12),
+                  padx=24, pady=12).pack(pady=(0, 18))
+
+        def odswiez():
+            if not w.winfo_exists():
+                return
+            scena.postep = self.scena.postep
+            scena.faza = self.scena.faza
+            scena.zablokowana = self.scena.zablokowana
+            scena.rysuj()
+            opis, kolor = scena._stan()
+            lbl.configure(text=opis, fg=kolor)
+            if self.scena.faza in ("spoczynek", "otwarty_staly", "blokada"):
+                # ruch dobiegl konca — zostawiamy okno na chwile i zamykamy
+                w.after(2200, lambda: w.winfo_exists() and w.destroy())
+                return
+            w.after(60, odswiez)
+
+        w.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - szer) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - wys) // 3
+        w.geometry(f"+{max(0, x)}+{max(0, y)}")
+        odswiez()
+        return w
 
     def info_okno(self, tytul, tresc):
         """Komunikat w barwach programu — z jednym przyciskiem."""
