@@ -24,10 +24,14 @@ import aktualizacje
 
 def okno_aktualizacji(rodzic, info, kolory=None):
     """Pokazuje okno z opisem aktualizacji i obsluguje pobranie."""
+    # Barwy uczelni: zielen #036744 jako wypelnienie, zloto #b9975b na
+    # przycisk zatwierdzenia. Napis na zieleni bialy — zielen uczelni jest
+    # za ciemna, zeby czytac na niej ciemny tekst.
     K = kolory or {
-        "tlo": "#0d2419", "tlo2": "#143024", "linia": "#1f4633",
-        "tekst": "#e9f2ec", "przygaszony": "#7d998a",
-        "akcent": "#00a86b", "zloto": "#c9a86e", "naAkcencie": "#04220e",
+        "tlo": "#011c12", "tlo2": "#01291b", "linia": "#023c27",
+        "tekst": "#ebf3f0", "przygaszony": "#86b6a5",
+        "akcent": "#036744", "akcent2": "#024a31",
+        "zloto": "#b9975b", "zloto2": "#e8d6b0", "naAkcencie": "#ffffff",
     }
 
     w = tk.Toplevel(rodzic)
@@ -59,7 +63,35 @@ def okno_aktualizacji(rodzic, info, kolory=None):
                     font=("Segoe UI", 9))
     stan.pack(anchor="w", pady=(12, 4))
 
-    pasek = ttk.Progressbar(ramka, length=460, mode="determinate", maximum=100)
+    # Wlasny pasek zamiast ttk.Progressbar — ten drugi rysuje sie stylem
+    # systemu i na Windows wychodzi bialo-niebieski, obcy wobec barw uczelni.
+    pasek = tk.Frame(ramka, bg=K["tlo"])
+
+    naglowek = tk.Frame(pasek, bg=K["tlo"])
+    naglowek.pack(fill="x", pady=(0, 7))
+    etap = tk.Label(naglowek, text="Pobieranie", bg=K["tlo"], fg=K["zloto2"],
+                    font=("Segoe UI Semibold", 11))
+    etap.pack(side="left")
+    procent = tk.Label(naglowek, text="0%", bg=K["tlo"], fg=K["tekst"],
+                       font=("Segoe UI Semibold", 16))
+    procent.pack(side="right")
+
+    tor = tk.Frame(pasek, bg=K["linia"], height=14, width=460)
+    tor.pack(fill="x")
+    tor.pack_propagate(False)
+    wypelnienie = tk.Frame(tor, bg=K["akcent"])
+    wypelnienie.place(x=0, y=0, relwidth=0, relheight=1)
+    blask = tk.Frame(tor, bg=K["zloto"], height=2)
+    blask.place(x=0, y=0, relwidth=0)
+
+    def ustaw_postep(ulamek, opis=None):
+        """Wypelnienie i procenty. Zloty wlos u gory daje wrazenie glebi."""
+        u = max(0.0, min(1.0, float(ulamek)))
+        wypelnienie.place_configure(relwidth=u)
+        blask.place_configure(relwidth=u)
+        procent.configure(text=f"{round(u * 100)}%")
+        if opis:
+            etap.configure(text=opis)
 
     guziki = tk.Frame(ramka, bg=K["tlo"])
     guziki.pack(fill="x", pady=(14, 0))
@@ -69,10 +101,10 @@ def okno_aktualizacji(rodzic, info, kolory=None):
             guziki, text=tekst, command=komenda, relief="flat", bd=0,
             cursor="hand2", font=("Segoe UI Semibold", 10),
             padx=18, pady=9,
-            bg=K["akcent"] if glowny else K["tlo2"],
-            fg=K["naAkcencie"] if glowny else K["tekst"],
-            activebackground=K["zloto"] if glowny else K["linia"],
-            activeforeground=K["naAkcencie"] if glowny else K["tekst"])
+            bg=K["zloto"] if glowny else K["tlo2"],
+            fg="#16301f" if glowny else K["tekst"],
+            activebackground=K["zloto2"] if glowny else K["linia"],
+            activeforeground="#16301f" if glowny else K["tekst"])
 
     def pozniej():
         w.destroy()
@@ -85,8 +117,9 @@ def okno_aktualizacji(rodzic, info, kolory=None):
     def instaluj():
         b_inst.configure(state="disabled")
         b_poz.configure(state="disabled")
-        pasek.pack(fill="x", pady=(0, 6))
-        stan.configure(text="Pobieranie...")
+        pasek.pack(fill="x", pady=(4, 10))
+        ustaw_postep(0.0, "Pobieranie")
+        stan.configure(text="Nie zamykaj programu do końca aktualizacji")
 
         def robota():
             try:
@@ -110,9 +143,9 @@ def okno_aktualizacji(rodzic, info, kolory=None):
             while True:
                 rodzaj, tresc = kolejka.get_nowait()
                 if rodzaj == "postep":
-                    pasek.configure(value=round(tresc * 100))
+                    ustaw_postep(tresc)
                 elif rodzaj == "etap":
-                    stan.configure(text=tresc)
+                    ustaw_postep(1.0, tresc.rstrip("."))
                 elif rodzaj == "gotowe":
                     zakoncz(tresc)
                     return
@@ -124,6 +157,7 @@ def okno_aktualizacji(rodzic, info, kolory=None):
         w.after(120, odbieraj)
 
     def zakoncz(bat):
+        ustaw_postep(1.0, "Gotowe")
         stan.configure(text="Zamykam program — wrócę za chwilę "
                             "w nowej wersji...")
         w.update_idletasks()

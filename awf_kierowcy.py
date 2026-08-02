@@ -22,7 +22,7 @@ except ImportError:
     print("Brakuje biblioteki Pillow. Uruchom: pip install pillow")
     sys.exit(1)
 
-VER = "7.1.0"
+VER = "7.4.0"
 NAZWA = "AWF KIEROWCY"
 PODTYTUL = "Kontrola wjazdu i wyjazdu"
 
@@ -653,7 +653,8 @@ class Scena(tk.Canvas):
         self.create_rectangle(sx - 37, sy - 14, sx + 37, sy, fill="#39424e"
                               if B["welon"] == 0 else "#7b8794", outline="")
         ruch = self.faza not in ("spoczynek", "blokada", "otwarty_staly")
-        kol = "#f2b544" if ruch else ("#37c76a" if self.postep < 0.1 else "#4a3a1c")
+        kol = "#f2b544" if ruch else ("#37c76a" if self.postep < 0.5
+                                      else "#d33c40")
         self.create_oval(sx - 13, sy - 154, sx + 13, sy - 128, fill=kol, outline="")
 
         import math
@@ -670,15 +671,21 @@ class Scena(tk.Canvas):
         self._hud(LP, W, H)
 
     def _stan(self):
+        """Opis i barwa stanu.
+
+        Czerwony = przejazdu nie ma, zielony = przejazd wolny, zloty = ruch
+        albo stan wymagajacy uwagi. Tak samo jak na sygnalizacji drogowej,
+        wiec nikt nie musi sie tego uczyc.
+        """
         return {
             "spoczynek": (("ZAPORA ZAMKNIĘTA" if self.typ == "slupki"
-                           else "SZLABAN OPUSZCZONY"), B["zloto"]),
+                           else "SZLABAN OPUSZCZONY"), B["alarm"]),
             "blokada": ("BLOKADA — POŁĄCZENIA IGNOROWANE", B["alarm"]),
             "dzwoni": ("POŁĄCZENIE PRZYCHODZĄCE", B["uwaga"]),
             "otwieranie": (("SŁUPKI OPADAJĄ" if self.typ == "slupki"
-                            else "SZLABAN SIĘ PODNOSI"), B["ok"]),
+                            else "SZLABAN SIĘ PODNOSI"), B["uwaga"]),
             "otwarty": ("PRZEJAZD WOLNY", B["ok"]),
-            "otwarty_staly": ("PRZEJAZD OTWARTY NA STAŁE", B["uwaga"]),
+            "otwarty_staly": ("PRZEJAZD OTWARTY NA STAŁE", B["ok"]),
             "zamykanie": (("SŁUPKI PODNOSZĄ SIĘ" if self.typ == "slupki"
                            else "SZLABAN OPADA"), B["uwaga"]),
             "odmowa": ("DOSTĘP ZABLOKOWANY", B["alarm"]),
@@ -2091,9 +2098,22 @@ class App(tk.Tk):
                 # Krycie dobrane pomiarem: przy 214 zdjecie znikalo pod
                 # jednolita plama. Przy 176 widac kampus, a panele na
                 # wierzchu sa nieprzezroczyste, wiec tresc zostaje czytelna.
-                kryjacy = (244, 248, 247, 176) if B["welon"] else (2, 16, 10, 188)
+                # Kadr jak przy logowaniu — lekko przyciemniony, z zaslona
+                # pod trescia. Zdjecie przy krawedziach zostaje widoczne,
+                # a napisy dostaja ciemne podloze.
+                kryjacy = (244, 248, 247, 96) if B["welon"] else (2, 16, 10, 118)
                 kadr = Image.alpha_composite(
                     kadr, Image.new("RGBA", (W, H), kryjacy))
+                # winieta: narozniki ciemniejsze, srodek jasniejszy
+                win = Image.new("L", (W, H), 0)
+                ImageDraw.Draw(win).ellipse(
+                    [-W * 0.30, -H * 0.40, W * 1.30, H * 1.40], fill=255)
+                win = win.filter(ImageFilter.GaussianBlur(
+                    max(40, min(W, H) // 6))).point(
+                        lambda v: int((255 - v) * (0.22 if B["welon"] else 0.34)))
+                barwa_win = (255, 255, 255) if B["welon"] else (0, 0, 0)
+                kadr.paste(Image.new("RGBA", (W, H), barwa_win + (255,)),
+                           (0, 0), win)
                 etykieta._tk = ImageTk.PhotoImage(kadr.convert("RGB"))
                 etykieta.configure(image=etykieta._tk)
             except (OSError, ValueError, MemoryError):
@@ -2144,6 +2164,13 @@ class App(tk.Tk):
             stan.pack(anchor="w")
             for widget in (k, wn, lam, opis, nazwa, stan):
                 widget.bind("<Button-1>", lambda _e, n=nr: self.wybierz_obiekt(n))
+                widget.bind("<Double-Button-1>",
+                            lambda _e, n=nr: (self.wybierz_obiekt(n),
+                                              self.pokaz_scene(True)))
+                widget.bind("<Button-3>",
+                            lambda e, n=nr: self.menu_obiektu(e, n))
+                widget.bind("<Enter>", lambda _e, n=nr: self._podswietl(n, True))
+                widget.bind("<Leave>", lambda _e, n=nr: self._podswietl(n, False))
             self.kafle.append({"ramka": k, "lampka": lam, "kropka": kropka,
                                "nazwa": nazwa, "stan": stan,
                                "tlo": (k, wn, lam, opis, nazwa, stan)})
@@ -2172,19 +2199,66 @@ class App(tk.Tk):
                                     fg=B["przygasz"], font=("Segoe UI", 11))
         self.lbl_miejsce.pack(side="right", padx=14)
 
-        self.scena = Scena(prawa)
+        # --- srodek: podsumowanie na tle kampusu, scena dopiero na zadanie ---
+        # Zdjecie obiektu zajmowalo caly ekran i zaslanialo tlo. Teraz
+        # domyslnie widac tlo i liczby, a scena z animacja wchodzi dopiero,
+        # gdy wejdziesz w obiekt albo wydasz polecenie.
+        self.srodek = tk.Frame(prawa, bg=B["tlo2"])
+        self.srodek.grid(row=1, column=0, sticky="nsew", padx=18)
+        self.srodek.rowconfigure(0, weight=1)
+        self.srodek.columnconfigure(0, weight=1)
+
+        self.podsumowanie = tk.Frame(self.srodek, bg=B["tlo2"])
+        self.podsumowanie.grid(row=0, column=0, sticky="nsew")
+        self.tlo_kampusu(self.podsumowanie)
+
+        srod = tk.Frame(self.podsumowanie, bg=B["tlo2"], padx=30, pady=26,
+                        highlightthickness=1, highlightbackground=B["zloto2"])
+        srod.place(relx=0.5, rely=0.5, anchor="center")
+        self.lbl_duzy = tk.Label(srod, text="", bg=B["tlo2"], fg=B["tekst"],
+                                 font=("Segoe UI Semibold", 30))
+        self.lbl_duzy.pack()
+        self.lbl_duzy_stan = tk.Label(srod, text="", bg=B["tlo2"],
+                                      font=("Segoe UI Semibold", 15))
+        self.lbl_duzy_stan.pack(pady=(6, 20))
+
+        liczby = tk.Frame(srod, bg=B["tlo2"])
+        liczby.pack()
+        self.liczniki = {}
+        for kol, (klucz, opis) in enumerate(
+                (("wjazdy", "wjazdów dziś"), ("ostatni", "ostatni przejazd"),
+                 ("sterownik", "sterownik"), ("kierowcy", "uprawnionych"))):
+            k = tk.Frame(liczby, bg=B["tlo2"], padx=20)
+            k.grid(row=0, column=kol)
+            war = tk.Label(k, text="—", bg=B["tlo2"], fg=B["tekst"],
+                           font=("Segoe UI Semibold", 22))
+            war.pack()
+            tk.Label(k, text=opis, bg=B["tlo2"], fg=B["przygasz"],
+                     font=("Segoe UI", 11)).pack()
+            self.liczniki[klucz] = war
+
+        tk.Button(srod, text="Pokaż podgląd obiektu", relief="flat", bd=0,
+                  cursor="hand2", font=("Segoe UI Semibold", 13),
+                  bg=B["tlo3"], fg=B["tekst"], activebackground=B["linia"],
+                  padx=26, pady=13,
+                  command=self.pokaz_scene).pack(pady=(24, 0))
+
+        self.scena = Scena(self.srodek)
         self.scena.czysta = True
         self.scena.material = self.scena.wczytaj_material()
         self.scena.on_przycisk = self.przycisk_sceny
-        self.scena.grid(row=1, column=0, sticky="nsew", padx=18)
+        self.scena.bind("<Button-3>",
+                        lambda e: self.menu_obiektu(e, self.obiekt))
+        self.scena_widoczna = False
 
         dol = tk.Frame(prawa, bg=B["tlo2"], padx=18, pady=16)
         dol.grid(row=2, column=0, sticky="ew")
-        for i in range(4):
+        for i in range(5):
             dol.columnconfigure(i, weight=1, uniform="polecenia")
         self.polecenia = []
         opisy = [("Wpuść pojazd", 0, True), ("Otwórz na stałe", 1, False),
-                 ("Zamknij", 2, False), ("Blokada", 3, False)]
+                 ("Zamknij", 2, False), ("Blokada", 3, False),
+                 ("Podgląd obiektu", 4, False)]
         for kol, (tekst, nr, glowny) in enumerate(opisy):
             b = tk.Button(
                 dol, text=tekst, relief="flat", bd=0, cursor="hand2",
@@ -2193,10 +2267,67 @@ class App(tk.Tk):
                 fg=B["naPanelu"] if not glowny else "#16301f",
                 activebackground=B["zloto2"] if glowny else B["linia"],
                 activeforeground=B["tekst"] if not glowny else "#16301f",
-                command=lambda n=nr: self.przycisk_sceny(n))
+                command=(self.przelacz_scene if nr == 4
+                         else lambda n=nr: self.przycisk_sceny(n)))
             b.grid(row=0, column=kol, sticky="ew", padx=6)
             self.polecenia.append(b)
         return ram
+
+    def _podswietl(self, nr, wchodzi):
+        """Kafel pod kursorem jasnieje — widac, w co sie kliknie."""
+        k = self.kafle[nr]
+        if nr == self.obiekt:
+            return
+        tlo = B["linia"] if wchodzi else B["tlo2"]
+        for w in k["tlo"]:
+            try:
+                w.configure(bg=tlo)
+            except tk.TclError:
+                pass
+
+    def menu_obiektu(self, zdarzenie, nr):
+        """Menu podreczne pod prawym klawiszem — polecenia dla tego obiektu.
+
+        Pozycje zmieniaja sie razem ze stanem: nie ma sensu pokazywac
+        "Otworz na stale", gdy juz jest otwarte na stale.
+        """
+        self.wybierz_obiekt(nr)
+        o = self.d["obiekty"][nr]
+        s = self.stany[o["id"]]
+        otwarte = s["postep"] < 0.5
+        stale = s.get("faza") == "otwarty_staly"
+
+        m = tk.Menu(self, tearoff=0, bg=B["tlo2"], fg=B["tekst"],
+                    activebackground=B["akcent"], activeforeground="#ffffff",
+                    bd=0, font=("Segoe UI", 11))
+        m.add_command(label=f'  {o["nazwa"]}  ·  {o["miejsce"]}',
+                      state="disabled")
+        m.add_separator()
+        if not s["blokada"]:
+            m.add_command(label="Wpuść pojazd",
+                          command=lambda: self.przycisk_sceny(0),
+                          state="disabled" if otwarte else "normal")
+            m.add_command(label="Otwórz na stałe",
+                          command=lambda: self.przycisk_sceny(1),
+                          state="disabled" if stale else "normal")
+            m.add_command(label="Zamknij" if o["typ"] == "slupki" else "Opuść",
+                          command=lambda: self.przycisk_sceny(2),
+                          state="normal" if (otwarte or stale) else "disabled")
+            m.add_separator()
+        m.add_command(
+            label="Zdejmij blokadę" if s["blokada"] else "Załóż blokadę",
+            command=lambda: self.przycisk_sceny(3))
+        m.add_separator()
+        m.add_command(label="Podgląd obiektu",
+                      command=lambda: self.pokaz_scene(True))
+        m.add_command(label="Animacja w osobnym oknie",
+                      command=lambda: self.okno_animacji("Podgląd"))
+        m.add_command(label="Historia tego obiektu",
+                      command=lambda: self.przelacz("historia"))
+        try:
+            m.tk_popup(zdarzenie.x_root, zdarzenie.y_root)
+        finally:
+            m.grab_release()
 
     def _znaczek(self, plotno, typ):
         """Maly rysunek obiektu na kaflu. Zwraca element, ktory zmienia barwe
@@ -2211,6 +2342,45 @@ class App(tk.Tk):
         plotno.create_rectangle(4, 30, 40, 34, fill=B["linia"], outline="")
         plotno.create_rectangle(7, 12, 12, 31, fill=B["przygasz"], outline="")
         return plotno.create_line(12, 15, 40, 15, width=5, fill=B["ok"])
+
+    def pokaz_scene(self, pokaz=True):
+        """Przelacza srodek miedzy podsumowaniem a scena z animacja."""
+        if not hasattr(self, "scena_widoczna"):
+            return
+        if pokaz and not self.scena_widoczna:
+            self.podsumowanie.grid_remove()
+            self.scena.grid(row=0, column=0, sticky="nsew")
+            self.scena_widoczna = True
+            self.scena.rysuj()
+            self.polecenia[4].configure(text="Ukryj podgląd")
+        elif not pokaz and self.scena_widoczna:
+            self.scena.grid_remove()
+            self.podsumowanie.grid()
+            self.scena_widoczna = False
+            self.polecenia[4].configure(text="Podgląd obiektu")
+
+    def przelacz_scene(self):
+        self.pokaz_scene(not self.scena_widoczna)
+
+    def odswiez_liczby(self):
+        """Liczby w podsumowaniu — tylko gdy podsumowanie jest widoczne."""
+        if not hasattr(self, "liczniki") or self.scena_widoczna:
+            return
+        o = self.d["obiekty"][self.obiekt]
+        wpisy = [h for h in self.d.get("historia", [])
+                 if h.get("obiekt") == o["id"]]
+        dzis = datetime.now().strftime("%Y-%m-%d")
+        self.liczniki["wjazdy"].configure(
+            text=str(sum(1 for h in wpisy if str(h.get("kiedy", "")).startswith(dzis))))
+        ostatni = wpisy[-1].get("kiedy", "") if wpisy else ""
+        self.liczniki["ostatni"].configure(text=(ostatni[11:16] or "—"))
+        polaczony = self.d.get("sterowniki", {}).get(o["id"], {}).get(
+            "stan", "połączony")
+        self.liczniki["sterownik"].configure(
+            text="łączy" if polaczony != "brak" else "brak",
+            fg=B["ok"] if polaczony != "brak" else B["alarm"])
+        self.liczniki["kierowcy"].configure(
+            text=str(sum(1 for k in self.d["kierowcy"] if k.get("aktywny", True))))
 
     def wybierz_obiekt(self, nr):
         """Klikniecie w kafel obiektu."""
@@ -2241,9 +2411,9 @@ class App(tk.Tk):
             elif s["blokada"]:
                 barwa, tekst = B["alarm"], "BLOKADA"
             elif s["postep"] < 0.5:
-                barwa, tekst = B["uwaga"], "OTWARTE"
+                barwa, tekst = B["ok"], "OTWARTE"
             else:
-                barwa, tekst = B["ok"], "ZAMKNIĘTE"
+                barwa, tekst = B["alarm"], "ZAMKNIĘTE"
             try:
                 k["lampka"].itemconfigure(k["kropka"], fill=barwa)
             except tk.TclError:
@@ -2251,6 +2421,10 @@ class App(tk.Tk):
             k["stan"].configure(text=tekst.capitalize(), fg=barwa)
         self.lam_stan.itemconfigure(self._kropka_stan, fill=kolor)
         self.lbl_stan.configure(text=opis, fg=kolor)
+        if hasattr(self, "lbl_duzy"):
+            self.lbl_duzy.configure(text=self.d["obiekty"][self.obiekt]["nazwa"])
+            self.lbl_duzy_stan.configure(text=opis, fg=kolor)
+            self.odswiez_liczby()
         self.polecenia[2].configure(
             text="Zamknij" if self.scena.typ == "slupki" else "Opuść")
         self.polecenia[3].configure(
@@ -2274,15 +2448,15 @@ class App(tk.Tk):
 
     def _naglowek(self, rodzic, tytul, podtytul):
         """Naglowek zakladki — zlota kreska z lewej porzadkuje kolumne."""
-        r = tk.Frame(rodzic, bg=B["tlo"])
+        r = tk.Frame(rodzic, bg=B["tlo2"])
         r.pack(fill="x", padx=24, pady=(22, 16))
-        kreska = tk.Frame(r, bg=B["zloto"], width=3)
-        kreska.pack(side="left", fill="y", padx=(0, 14))
-        opis = tk.Frame(r, bg=B["tlo"])
+        kreska = tk.Frame(r, bg=B["zloto"], width=4)
+        kreska.pack(side="left", fill="y")
+        opis = tk.Frame(r, bg=B["tlo2"], padx=18, pady=14)
         opis.pack(side="left", fill="x", expand=True)
-        tk.Label(opis, text=tytul, bg=B["tlo"], fg=B["tekst"],
+        tk.Label(opis, text=tytul, bg=B["tlo2"], fg=B["tekst"],
                  font=("Segoe UI Semibold", 20)).pack(anchor="w")
-        tk.Label(opis, text=podtytul, bg=B["tlo"], fg=B["przygasz"],
+        tk.Label(opis, text=podtytul, bg=B["tlo2"], fg=B["przygasz"],
                  font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 0))
 
     def _tabela(self, rodzic, kolumny, szerokosci):
@@ -2318,8 +2492,8 @@ class App(tk.Tk):
         return t
 
     def _przyciski(self, rodzic, pozycje):
-        r = tk.Frame(rodzic, bg=B["tlo"])
-        r.pack(fill="x", padx=24, pady=(0, 20))
+        r = tk.Frame(rodzic, bg=B["tlo2"])
+        r.pack(fill="x", padx=24, pady=(0, 20), ipady=10, ipadx=10)
         for tekst, akcja, glowny in pozycje:
             tk.Button(r, text=tekst, command=akcja, relief="flat", bd=0,
                       cursor="hand2", font=("Segoe UI Semibold", 13),
@@ -2497,8 +2671,9 @@ class App(tk.Tk):
             w, text=f"Wersja programu: {VER}  ·  jeszcze nie sprawdzano",
             bg=B["tlo"], fg=B["przygasz"], font=("Segoe UI", 12))
         self.lbl_akt.pack(anchor="w", padx=24)
-        tk.Label(w, text="Program sprawdza aktualizacje na ekranie logowania "
-                         "i za każdym razem pyta, zanim cokolwiek wgra.",
+        tk.Label(w, text="Program sprawdza aktualizacje na ekranie logowania, "
+                         "zanim ktokolwiek wpisze PIN. Sam decydujesz, "
+                         "czy ma pytać, czy wgrywać bez pytania.",
                  bg=B["tlo"], fg=B["przygasz"],
                  font=("Segoe UI", 11)).pack(anchor="w", padx=24, pady=(4, 0))
 
@@ -2509,13 +2684,19 @@ class App(tk.Tk):
         self.lbl_auto.pack(side="left", padx=(0, 12))
 
         def przelacz_auto():
-            self.d["sprawdzaj_aktualizacje"] = not self.d.get(
-                "sprawdzaj_aktualizacje", True)
+            """Trzy stany po kolei: pyta → wgrywa sam → nie sprawdza."""
+            teraz = self.tryb_aktualizacji()
+            nowy = {"pyta": "sam", "sam": "wylaczone",
+                    "wylaczone": "pyta"}[teraz]
+            self.d["tryb_aktualizacji"] = nowy
+            self.d.pop("sprawdzaj_aktualizacje", None)
+            self.d.pop("auto_aktualizacja", None)
             zapisz(self.d)
             odswiez_auto()
-            self.log("sprawdzanie aktualizacji: "
-                     + ("włączone" if self.d["sprawdzaj_aktualizacje"]
-                        else "wyłączone"))
+            self.log("aktualizacje: " + {
+                "pyta": "program pyta przed wgraniem",
+                "sam": "program wgrywa sam",
+                "wylaczone": "nie sprawdza"}[nowy])
 
         b_auto = tk.Button(r_auto, command=przelacz_auto, relief="flat", bd=0,
                            cursor="hand2", bg=B["tlo3"], fg=B["tekst"],
@@ -2523,12 +2704,16 @@ class App(tk.Tk):
         b_auto.pack(side="left")
 
         def odswiez_auto():
-            wlaczone = bool(self.d.get("sprawdzaj_aktualizacje", True))
-            self.lbl_auto.configure(
-                text=("Sprawdza nowe wersje przy uruchomieniu"
-                      if wlaczone else "Nie sprawdza nowych wersji"),
-                fg=B["ok"] if wlaczone else B["przygasz"])
-            b_auto.configure(text="Wyłącz" if wlaczone else "Włącz")
+            opis = {
+                "pyta": ("Pyta przed wgraniem nowej wersji", B["ok"],
+                         "Zmień na: wgrywaj sam"),
+                "sam": ("Wgrywa nowe wersje sam, bez pytania", B["uwaga"],
+                        "Zmień na: nie sprawdzaj"),
+                "wylaczone": ("Nie sprawdza nowych wersji", B["przygasz"],
+                              "Zmień na: pytaj"),
+            }[self.tryb_aktualizacji()]
+            self.lbl_auto.configure(text=opis[0], fg=opis[1])
+            b_auto.configure(text=opis[2])
 
         odswiez_auto()
 
@@ -2603,6 +2788,7 @@ class App(tk.Tk):
         if hasattr(self, "lbl_obiekt"):
             self.lbl_obiekt.configure(text=o["nazwa"])
             self.lbl_miejsce.configure(text=o["miejsce"])
+        self.pokaz_scene(False)
         self.odswiez_kafle()
         self.scena.rysuj()
 
@@ -2873,7 +3059,8 @@ class App(tk.Tk):
         # trafilo w te chwile, rysowanie dotyczyloby juz usunietego plotna.
         try:
             if self.widoki["podglad"].winfo_ismapped():
-                self.scena.rysuj()
+                if getattr(self, "scena_widoczna", False):
+                    self.scena.rysuj()
                 self.odswiez_kafle()
         except tk.TclError:
             pass
@@ -3352,6 +3539,19 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
 
     # ------- cicha aktualizacja przed zalogowaniem -------
 
+    def tryb_aktualizacji(self):
+        """'pyta' (domyslnie), 'sam' albo 'wylaczone'.
+
+        Domyslnie program pyta — o zamknieciu i podmianie plikow decyduje
+        dyzurny. Wgrywanie bez pytania trzeba wlaczyc recznie.
+        """
+        tryb = self.d.get("tryb_aktualizacji")
+        if tryb in ("pyta", "sam", "wylaczone"):
+            return tryb
+        if self.d.get("sprawdzaj_aktualizacje") is False:
+            return "wylaczone"
+        return "pyta"
+
     def _cicha_aktualizacja(self):
         """Sprawdza serwer i sam wgrywa nowa wersje, zanim ktos wpisze PIN.
 
@@ -3364,7 +3564,7 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             import aktualizacje                      # noqa: F401
         except ImportError:
             return
-        if not self.d.get("sprawdzaj_aktualizacje", True):
+        if self.tryb_aktualizacji() == "wylaczone":
             self._napis_pin("v" + VER)
             return
         import queue
@@ -3387,10 +3587,13 @@ Dokument zawiera dane osobowe — przechowywać zgodnie z zasadami uczelni.
             return
         self._akt_stan = rodzaj
         if rodzaj == "jest":
-            # Zawsze pytamy. Program nigdy nie wgrywa nowej wersji sam z
-            # siebie — decyzje o zamknieciu i podmianie plikow podejmuje
-            # dyzurny, bo to on odpowiada za obiekt w tym momencie.
-            self._zapytaj_o_aktualizacje(dane)
+            # Domyslnie pytamy — o zamknieciu programu decyduje dyzurny.
+            # Wgrywanie bez pytania dziala tylko wtedy, gdy ktos wlaczyl je
+            # recznie w Ustawieniach.
+            if self.tryb_aktualizacji() == "sam":
+                self._wgraj_po_cichu(dane)
+            else:
+                self._zapytaj_o_aktualizacje(dane)
         elif rodzaj == "aktualna":
             self._napis_pin("v" + VER + " — najnowsza")
         else:
