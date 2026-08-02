@@ -1,7 +1,7 @@
 {
-  "wersja": "7.1.1",
-  "opis": "Co nowego w 7.1.1:\n\n• Awf kierowcy v10.2.0",
+  "wersja": "7.1.2",
+  "opis": "Co nowego w 7.1.2:\n\n• odstep miedzy kropkami",
   "paczka": "https://github.com/superdarco78/AWF-Kierowcy/releases/latest/download/AWF-Kierowcy.zip",
-  "suma": "1f859a4b7eb6fb3872c8180b2a79ab546c6131b0fa14df33b605ab914c8f37e6",
+  "suma": "66f82e4eab41f8e2ff250a544d230da1ff187fa6254c36ccfe49f0dff7520501",
   "wymagana": false
 }
